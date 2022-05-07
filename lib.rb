@@ -97,6 +97,7 @@ class Scan < Array
     seperator = match[0]
 
     # Detection of title line and units
+    # Problem: even if the spectrum were in wavenumbers, the unit was still recorded as "Wavelength"
     if lines[0] =~ /^Frame[\t,]/
       title_line = lines.shift
       @spectrum_units = title_line.split(seperator)[1..2]
@@ -104,13 +105,14 @@ class Scan < Array
     else
       puts "No title line detected. Please ensure data format to be <Frame #> <Wavelength/wavenumber> <Intensity>"
       puts "And input <wavelength/wavenumber, intensity> unit below:"
-      @wv_unit = gets.chomp.split /, ?/
+      @spectrum_units = gets.chomp.split /, ?/
     end
 
     # Framesize and wavelength construction
     @framesize = (lines.index {|ln| ln[0] == '2'})
     @wv = (0.. @framesize -1).map {|i| lines[i].split(seperator)[1]}
     puts "Frame size determined to be #{@framesize}, spectral range being #{@wv[0]} .. #{@wv[-1]}"
+    @spectrum_units[0] = 'Wavenumber (cm-1)' if @wv[-1] < @wv[0]
     
     raise "Number of lines is #{lines.size}, not multiplication of given width (#{@width}) * height (#{@height})* depth (#{@depth})!" unless lines.size == @framesize * (@width * @height * @depth)
     puts "Got #{lines.size} lines of spectrum to process."
@@ -161,7 +163,9 @@ end
 class Spectrum < Array
   attr_accessor :name, :units, :spectral_range, :signal_range, :desc
   def initialize(path=nil)
-    @name = ""
+    @name = ''
+    @desc = ''
+    @units = ['', 'counts']
     super Array.new() {[0.0, 0.0]}
     # Load from tsv/csv if path given
     if path && (File.exist? path)
@@ -208,8 +212,8 @@ class Spectrum < Array
     raise "Radius should be integer but was given #{radius}" unless radius.is_a?(Integer)
     raise "Radius larger than half the length of spectrum" if 2*radius >= self.size
 
-    result = Array.new(self.size - 2 * radius)
-    result.each_index do |i|
+    result = Spectrum.new
+    (0..self.size-2*radius-1).each do |i|
       # Note that the index i of the moving average chromatogram aligns with i + radius in originaal chromatogram
       x = self[i + radius][0]
       y = 0.0
@@ -221,6 +225,48 @@ class Spectrum < Array
       y = y / (2 * radius + 1) # Normalization
       result[i] = [x, y]
     end
+    result.units = @units
+    result.name = @name + '-ma2'
+    result.update_info
+    result
+  end
+
+  def resample(sample)
+    raise "Expecting 1D array to be passed in" unless sample.all? Numeric
+    sample.sort!
+    
+    result = Spectrum.new
+    result.desc += "/#{sample.size} points"
+
+    update_info
+    # Frequency value could be increasing or depending on unit
+    x_polarity = (self[-1][0] - self[0][0] > 0 ) ? 1 : -1
+    sample.reverse! if x_polarity == -1
+
+    i = 0
+    while (sampling_point = sample.shift)
+      # Ugly catch
+      if sampling_point < self.spectral_range[0] || sampling_point > spectral_range[1]
+        next
+      end
+
+      while (i < self.size - 1) && ((sampling_point - self[i][0]) * x_polarity > 0.000001)
+        # self[i][0] need to surpass sampling point to bracket it
+        i += 1
+      end
+
+      if i == 0 # Could be unnecessarily costly, but I can think of no better way at the moment
+        interpolation = self[0][1]
+      else
+        interpolation = self[i-1][1] + (self[i][1] - self[i-1][1]) * (sampling_point - self[i-1][0]) / (self[i][0] - self[i-1][0])
+      end
+      result.push [sampling_point, interpolation]
+    end
+
+    result.update_info
+    result.name = @name + '-resampled'
+    # sample array is sorted right so the right sequence will follow ^.<
+    # result.reverse! if x_polarity == -1
     result
   end
 end
@@ -232,7 +278,7 @@ def plot_spectra(spectra)
   x_units = spectra.map {|spectrum| spectrum.units[0]}
   raise "Some spectra have different units!" unless x_units.all? {|unit| unit == x_units[0]}
 
-  plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%s")
+  plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   Dir.mkdir plotdir
   plots = []
   spectra.each do |spectrum|

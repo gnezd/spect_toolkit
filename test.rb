@@ -13,7 +13,7 @@ def loading_test()
   spects = []
   (5..20).each do |y|
     spects.push scan[24][y][0]
-    spects.last.name = "68_#{y}_0"
+    spects.last.name = "24_#{y}_0"
   end
   plot_spectra(spects)
   puts "Done at #{Time.now}"
@@ -94,14 +94,25 @@ end
 def fitting_test
   spect = Spectrum.new 'output/10-spect.tsv'
   puts spect.size
-  ma20 = spect.ma(20)
-  v = GSL::Vector.alloc spect.map{|pt| pt[1]}
-
-  fout = File.open 'output/fit.tsv', 'w'
-  (0..v.size-1).each do |i|
-    fout. puts "#{i}\t #{v[i]}"
-  end
-  fout.close
+  ma = spect.ma(50)
+  ma.write_tsv 'ma.tsv'
+  plot_spectra [spect, ma]
 end
 
-loading_test
+def resampling_test
+  spect1 = Spectrum.new 'testdata/spectra/24_11_0.tsv'
+  spect2 = spect1.ma(2)
+  puts spect1.size
+  puts spect2.size
+  # Show difference in x values
+  (0..5).each do |i|
+    puts "#{spect1[i].join('-')}"
+  end
+  puts '-----'
+  pick = [27431.83, 27431.93, 27432.03, 27400]
+  (0..20).each {|i| pick.push(27400 - 70*i)}
+  resmpl = spect1.resample(pick)
+  puts resmpl.size
+end
+
+resampling_test
