@@ -263,12 +263,28 @@ class Spectrum < Array
       result.push [sampling_point, interpolation]
     end
 
+    result.each do |pt|
+      puts "strange point: #{pt}" unless pt.size ==2
+    end
+
     result.update_info
     result.name = @name + '-resampled'
     # sample array is sorted right so the right sequence will follow ^.<
     # result.reverse! if x_polarity == -1
     result
   end
+
+  def *(input)
+    sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
+    v = input.resample(sample)
+    dummy = self
+    puts resample([1,2,3]).size
+    #u = resample(sample)
+    self_resmpled = GSL::Vector.alloc(u)
+    input_resmpled = GSL::Vector.alloc(v)
+    raise "Size still mismatched 0_o?" unless self_resmpled.size == input_resmpled.size
+  end
+
 end
 
 def plot_spectra(spectra)

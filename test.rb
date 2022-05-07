@@ -113,6 +113,19 @@ def resampling_test
   (0..20).each {|i| pick.push(27400 - 70*i)}
   resmpl = spect1.resample(pick)
   puts resmpl.size
+  puts resmpl.spectral_range
+  orig_x = spect1.map {|pt| pt[0]}
+  puts spect1[0..4]
+  puts "-----"
+  puts spect1.resample(orig_x)[0..4]
+  puts "Resampling test complete."
+end
+
+def inner_pdct_test
+  spect1 = Spectrum.new 'testdata/spectra/24_11_0.tsv'
+  ipd = spect1 * spect1
+  puts ipd.size
 end
 
 resampling_test
+inner_pdct_test
