@@ -94,9 +94,37 @@ end
 def fitting_test
   spect = Spectrum.new 'output/10-spect.tsv'
   puts spect.size
-  ma = spect.ma(50)
-  ma.write_tsv 'ma.tsv'
-  plot_spectra [spect, ma]
+
+  lineshape = Proc.new{|pos, width, height, x|
+    Math.exp(-((x - pos) / width)**2) * height
+  }
+  #puts lineshape[0,1,1,1]
+  bases = []
+  position_scan_density = 20
+  width_scan_density = 50
+
+  # 十分的疊床架屋
+  (0..position_scan_density).each do |position|
+    pos_column = Array.new()
+    (0..width_scan_density).each do |j|
+      basis = Spectrum.new
+      spect.each do |pt|
+        pos = spect.size.to_f * position / (position_scan_density + 1)
+        width = spect.size.to_f / (width_scan_density + 1) * j
+        height = pt[1]
+        basis.push [pt[0], lineshape[pos, width, height, pt[0]]]
+      end
+      pos_column.push basis
+    end
+    puts pos_column.class
+    puts pos_column.size
+    bases.push pos_column
+  end
+
+  puts bases.class
+  puts bases[0].class
+  puts bases[0][0].class
+  puts bases[0][0].size
 end
 
 def resampling_test
@@ -141,4 +169,5 @@ def inner_pdct_test
 end
 
 #resampling_test
-inner_pdct_test
+#inner_pdct_test
+fitting_test
