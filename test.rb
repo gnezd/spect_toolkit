@@ -123,9 +123,10 @@ end
 
 def inner_pdct_test
   spect1 = Spectrum.new 'testdata/spectra/24_11_0.tsv'
-  ipd = spect1 * spect1
+  spect2 = spect1.ma(2)
+  ipd = spect1 * spect2
   puts ipd.size
 end
 
-resampling_test
+#resampling_test
 inner_pdct_test

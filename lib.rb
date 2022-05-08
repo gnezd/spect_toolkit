@@ -266,9 +266,16 @@ class Spectrum < Array
     result.each do |pt|
       puts "strange point: #{pt}" unless pt.size ==2
     end
-
-    result.update_info
     result.name = @name + '-resampled'
+    begin
+
+    puts "result.size: #{result.size}"
+    result.update_info
+
+    rescue
+      puts "#{@name} upd failed"
+      self.write_tsv 'inspect.tsv'
+    end
     # sample array is sorted right so the right sequence will follow ^.<
     # result.reverse! if x_polarity == -1
     result
@@ -276,9 +283,12 @@ class Spectrum < Array
 
   def *(input)
     sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
-    v = input.resample(sample)
-    dummy = self
-    puts resample([1,2,3]).size
+    v = input.resample(sample).map {|pt| pt[1]}
+    puts v.class
+    puts v.size
+    u = self.resample(sample)
+    puts u.class
+    puts u.size
     #u = resample(sample)
     self_resmpled = GSL::Vector.alloc(u)
     input_resmpled = GSL::Vector.alloc(v)
