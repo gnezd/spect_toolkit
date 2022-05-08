@@ -231,31 +231,35 @@ class Spectrum < Array
     result
   end
 
-  def resample(sample)
+  def resample(sample_in)
     raise "Expecting 1D array to be passed in" unless sample.all? Numeric
-    sample.sort!
+    sample = sample_in.sort # Avoid mutating the resample array
     
+    update_info
+
     result = Spectrum.new
+    result.name = @name + '-resampled'
     result.desc += "/#{sample.size} points"
 
-    update_info
     # Frequency value could be increasing or depending on unit
     x_polarity = (self[-1][0] - self[0][0] > 0 ) ? 1 : -1
     sample.reverse! if x_polarity == -1
 
     i = 0
     while (sampling_point = sample.shift)
-      # Ugly catch
+      # Ugly catch for out of range points, throw out zero
       if sampling_point < self.spectral_range[0] || sampling_point > spectral_range[1]
+        result.push [sampling_point, 0.0]
         next
       end
 
+      # self[i][0] need to surpass sampling point to bracket it. Careful of rounding error
       while (i < self.size - 1) && ((sampling_point - self[i][0]) * x_polarity > 0.000001)
-        # self[i][0] need to surpass sampling point to bracket it
         i += 1
       end
 
-      if i == 0 # Could be unnecessarily costly, but I can think of no better way at the moment
+      # Could be unnecessarily costly, but I can think of no better way at the moment
+      if i == 0 
         interpolation = self[0][1]
       else
         interpolation = self[i-1][1] + (self[i][1] - self[i-1][1]) * (sampling_point - self[i-1][0]) / (self[i][0] - self[i-1][0])
@@ -263,19 +267,8 @@ class Spectrum < Array
       result.push [sampling_point, interpolation]
     end
 
-    result.each do |pt|
-      puts "strange point: #{pt}" unless pt.size ==2
-    end
-    result.name = @name + '-resampled'
-    begin
-
-    puts "result.size: #{result.size}"
     result.update_info
 
-    rescue
-      puts "#{@name} upd failed"
-      self.write_tsv 'inspect.tsv'
-    end
     # sample array is sorted right so the right sequence will follow ^.<
     # result.reverse! if x_polarity == -1
     result
@@ -283,16 +276,9 @@ class Spectrum < Array
 
   def *(input)
     sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
-    v = input.resample(sample).map {|pt| pt[1]}
-    puts v.class
-    puts v.size
-    u = self.resample(sample)
-    puts u.class
-    puts u.size
-    #u = resample(sample)
-    self_resmpled = GSL::Vector.alloc(u)
-    input_resmpled = GSL::Vector.alloc(v)
-    raise "Size still mismatched 0_o?" unless self_resmpled.size == input_resmpled.size
+    self_resmpled = GSL::Vector.alloc(self.resample(sample).map {|pt| pt[1]})
+    input_resmpled = GSL::Vector.alloc(input.resample(sample).map {|pt| pt[1]})
+    self_resmpled * input_resmpled.col
   end
 
 end

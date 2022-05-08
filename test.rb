@@ -122,10 +122,22 @@ def resampling_test
 end
 
 def inner_pdct_test
+  puts "Inner product tests:"
   spect1 = Spectrum.new 'testdata/spectra/24_11_0.tsv'
-  spect2 = spect1.ma(2)
+  spect2 = spect1.ma(10)
   ipd = spect1 * spect2
-  puts ipd.size
+  puts "Test: S1*S1, S1*ma10(S1), ma10(S1)*ma10(S1)"
+  puts spect1 * spect1
+  puts spect1 * spect2
+  puts spect2 * spect2
+  puts "Test: sin * sin, cos*cos"
+  sin = Spectrum.new()
+  cos = Spectrum.new()
+  (0..9999).each {|i| sin[i] = [i.to_f / 10, Math.sin(i.to_f/10)]}
+  (0..9999).each {|i| cos[i] = [i.to_f / 10, Math.cos(i.to_f/10)]}
+  puts "Sin*Sin: #{sin * sin}"
+  puts "Cos*Cos: #{cos * cos}"
+  puts "Cos*Sin: #{sin * cos}, #{cos * sin}"
 end
 
 #resampling_test
