@@ -93,7 +93,6 @@ end
 
 def fitting_test
   spect = Spectrum.new 'output/10-spect.tsv'
-  puts spect.size
 
   lineshape = Proc.new{|pos, width, height, x|
     Math.exp(-((x - pos) / width)**2) * height
@@ -104,27 +103,28 @@ def fitting_test
   width_scan_density = 50
 
   # 十分的疊床架屋
-  (0..position_scan_density).each do |position|
+  (0..position_scan_density - 1).each do |position|
     pos_column = Array.new()
-    (0..width_scan_density).each do |j|
+    (0..width_scan_density - 1).each do |j|
       basis = Spectrum.new
-      spect.each do |pt|
-        pos = spect.size.to_f * position / (position_scan_density + 1)
-        width = spect.size.to_f / (width_scan_density + 1) * j
+      basis.name = "#{position}-#{j}"
+      spect.each_with_index do |pt, i|
+        pos = spect.size.to_f * (position + 0.5) / (position_scan_density)
+        width = spect.size.to_f / (j + 1)
         height = pt[1]
-        basis.push [pt[0], lineshape[pos, width, height, pt[0]]]
+        basis.push [pt[0], lineshape[pos, width, 1, i]]
       end
       pos_column.push basis
     end
-    puts pos_column.class
-    puts pos_column.size
     bases.push pos_column
   end
 
-  puts bases.class
-  puts bases[0].class
-  puts bases[0][0].class
-  puts bases[0][0].size
+  puts "bases generated: a 2d array of width #{bases.size} and height #{bases[0].size}"
+  to_plot = []
+
+  20.times {to_plot.push bases[rand(20).to_i][rand(50).to_i]}
+  plot_spectra to_plot
+
 end
 
 def resampling_test
