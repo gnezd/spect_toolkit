@@ -8,6 +8,7 @@
 # Todo: accecpt code block for summing. Tricky: injection to whole loop
 # In general, mode extraction can be representated as a matrix acting on a spectrum but this requires spectrum spectrum constructing and lacks the freedom of passing blocks and conditions
 # An even more general way of doing things is to pass into sum_up() a list of criteria on the wavelengths
+require 'gsl'
 
 def plot_map(scan, sum = nil)
   if sum == nil
@@ -75,12 +76,12 @@ end
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
   attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth
-  def initialize (path, name, width, height, depth)
+  def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
-    @width = width
-    @height = height
-    @depth = depth
+    @width = dim[0]
+    @height = dim[1]
+    @depth = dim[2]
     @loaded = false
     @spectral_width = 0
     super Array.new(width) {Array.new(height) {Array.new(depth) {Spectrum.new()}}}
@@ -126,8 +127,14 @@ class Scan < Array
       k = frame / (@width * @height)
       j = (frame % (@width * @height)) / @width
       i = (frame % (@width * @height)) % @width
-      self[i][j][k].push [wv, intensity]
+      if j % 2 == 0
+        self[i][j][k].push [wv, intensity]
+      else
+        self[width-1-i][j][k].push [wv, intensity]
+      end
     end
+
+
 
     # Update all spectra
     puts "Loading done. Updating info of spectra."

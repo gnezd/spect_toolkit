@@ -168,6 +168,6 @@ def inner_pdct_test
   puts "Cos*Sin: #{sin * cos}, #{cos * sin}"
 end
 
-#resampling_test
+resampling_test
 #inner_pdct_test
 fitting_test
