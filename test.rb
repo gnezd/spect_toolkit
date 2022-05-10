@@ -91,41 +91,6 @@ scan.name = 'Test_simple_sum'
 plot_map scan
 end
 
-def fitting_test
-  spect = Spectrum.new 'output/10-spect.tsv'
-
-  lineshape = Proc.new{|pos, width, height, x|
-    Math.exp(-((x - pos) / width)**2) * height
-  }
-  #puts lineshape[0,1,1,1]
-  bases = []
-  position_scan_density = 20
-  width_scan_density = 50
-
-  # 十分的疊床架屋
-  (0..position_scan_density - 1).each do |position|
-    pos_column = Array.new()
-    (0..width_scan_density - 1).each do |j|
-      basis = Spectrum.new
-      basis.name = "#{position}-#{j}"
-      spect.each_with_index do |pt, i|
-        pos = spect.size.to_f * (position + 0.5) / (position_scan_density)
-        width = spect.size.to_f / (j + 1)
-        height = pt[1]
-        basis.push [pt[0], lineshape[pos, width, 1, i]]
-      end
-      pos_column.push basis
-    end
-    bases.push pos_column
-  end
-
-  puts "bases generated: a 2d array of width #{bases.size} and height #{bases[0].size}"
-  to_plot = []
-
-  20.times {to_plot.push bases[rand(20).to_i][rand(50).to_i]}
-  plot_spectra to_plot
-
-end
 
 def resampling_test
   spect1 = Spectrum.new 'testdata/spectra/24_11_0.tsv'
@@ -178,4 +143,78 @@ end
 #inner_pdct_test
 #fitting_test
 
-subtraction_test
+#subtraction_test
+
+def quick_plot_test
+  data = []
+  (0..10).each do |ln|
+    data.push (0..3).map {|i| rand(i)}
+  end
+
+  puts quick_plot(data)
+end
+
+def fitting_test
+  spect = Spectrum.new 'output/10-spect.tsv'
+
+  lineshape = Proc.new{|pos, width, height, x|
+    Math.exp(-((x - pos) / width)**2) * height
+  }
+  #puts lineshape[0,1,1,1]
+  bases = []
+  position_scan_density = 20
+  width_scan_density = 20
+
+  # 十分的疊床架屋
+  (0..position_scan_density - 1).each do |position|
+    pos_column = Array.new()
+    (0..width_scan_density - 1).each do |j|
+      basis = Spectrum.new
+      basis.name = "#{position}-#{j}"
+      spect.each_with_index do |pt, i|
+        pos = spect.size.to_f * (position + 0.5) / (position_scan_density)
+        width = spect.size.to_f / (j + 1)
+        height = pt[1]
+        basis.push [pt[0], lineshape[pos, width, 1, i]]
+      end
+      pos_column.push basis
+    end
+    bases.push pos_column
+  end
+
+  puts "bases generated: a 2d array of width #{bases.size} and height #{bases[0].size}"
+  to_plot = []
+  
+  inner_pdct_matrix = Array.new(position_scan_density) {Array.new(width_scan_density)}
+  normalizer = spect*spect
+  (0..position_scan_density - 1).each do |i|
+    (0..width_scan_density - 1).each do |j|
+      diff = spect - bases[i][j] * (spect * bases[i][j])
+      inner_pdct_matrix[i][j] = diff * diff
+    end
+  end
+  puts "normalizer: #{normalizer}"
+  plot_spectra [spect*(1/(spect*spect)), bases[0][8] * (1/(bases[0][9]*bases[0][9]))]
+
+  inner_pdct_out = File.new "output/inner_pdct.dat", 'w'
+  inner_pdct_matrix.each do |ln|
+    inner_pdct_out.puts ln.join "\t"
+  end
+  inner_pdct_out.close
+
+  plot_command = <<GPLOT_HEADER
+  set terminal png size 800,600 lw 2
+  set output 'output/inner_pdct.png'
+  plot 'output/inner_pdct.dat' matrix w image pixels
+  set terminal svg size 800,600 lw 2 mouse enhanced standalone
+  set output 'output/inner_pdct.svg'
+  replot
+GPLOT_HEADER
+  gplot_temp = File.new 'output/inner_pdct.gplot', 'w'
+  gplot_temp.puts plot_command
+  gplot_temp.close
+  `gnuplot output/inner_pdct.gplot`
+  spect.write_tsv 'bg_corrected.tsv'
+end
+
+fitting_test

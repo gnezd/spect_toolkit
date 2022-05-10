@@ -285,10 +285,14 @@ class Spectrum < Array
   end
 
   def *(input)
-    sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
-    self_resmpled_v = GSL::Vector.alloc(self.resample(sample).map {|pt| pt[1]})
-    input_resmpled_v = GSL::Vector.alloc(input.resample(sample).map {|pt| pt[1]})
-    self_resmpled_v * input_resmpled_v.col
+    if input.is_a? Spectrum
+      sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
+      self_resmpled_v = GSL::Vector.alloc(self.resample(sample).map {|pt| pt[1]})
+      input_resmpled_v = GSL::Vector.alloc(input.resample(sample).map {|pt| pt[1]})
+      self_resmpled_v * input_resmpled_v.col
+    elsif input.is_a? Numeric
+      self.each {|pt| pt[1] = pt[1].to_f * input}
+    end
   end
 
   def -(input)
@@ -342,4 +346,39 @@ end
 # Quick 'n dirty func. to convert plot coord. to piezo coord.
 def coord_conv(pl_scan_orig, orig_dim, map_dimension, coord)
   return [coord[0].to_f/map_dimension[0]*orig_dim[0]+pl_scan_orig[0], coord[1].to_f/map_dimension[1]*orig_dim[1]+pl_scan_orig[1]]
+end
+
+# Data form: [x1 y1-1 y2-1] [x2 y1-2 y2-2 ...]
+def quick_plot(data)
+  Dir.mkdir 'output' unless Dir.exists? 'output'
+  raise "Some entries in data are different in length" unless data.all? {|line| line.size == data[0].size}
+  data_fname = "data_#{Time.now.strftime("%d%b%Y-%H%M%S")}"
+  data_fout = File.open "output/#{data_fname}.tsv", 'w'
+  data.each { |line| data_fout.puts line.join("\t")}
+  data_fout.close
+
+  plotlines = []
+  data[0].each_with_index do |column, i|
+    # Assume for now no headder line
+    plotlines.push "u 1:($#{i}) t '#{i}'"
+  end
+      
+  plot_line = "plot 'output/#{data_fname}.tsv'" + plotlines.join(", \\\n'' ")
+  plot_headder = <<GPLOT_HEADER
+  set terminal png size 800,600 lw 2
+  set output 'output/#{data_fname}.png'
+GPLOT_HEADER
+  plot_replot = <<GPLOT_replot
+  set terminal svg mouse enhanced standalone size 800,600 lw 2
+  set output 'output/#{data_fname}.svg'
+  replot
+GPLOT_replot
+
+  gplot_out = File.new "output/#{data_fname}.gplot", 'w'
+  gplot_out.puts plot_headder
+  gplot_out.puts plot_line
+  gplot_out.puts plot_replot
+  gplot_out.close
+  `gnuplot 'output/#{data_fname}.gplot'`
+  data_fname
 end
