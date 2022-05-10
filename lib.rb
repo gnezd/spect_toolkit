@@ -127,6 +127,9 @@ class Scan < Array
       k = frame / (@width * @height)
       j = (frame % (@width * @height)) / @width
       i = (frame % (@width * @height)) % @width
+
+      # S-shape scan
+      # Todo on the instrument part: make this optional. After that also make this an option here.
       if j % 2 == 0
         self[i][j][k].push [wv, intensity]
       else
@@ -141,8 +144,8 @@ class Scan < Array
     self.each do |row|
       row.each do |column|
         column.each do |pixel|
-      pixel.units = @spectrum_units
-      pixel.update_info
+          pixel.units = @spectrum_units
+          pixel.update_info
         end
       end
     end
@@ -283,9 +286,21 @@ class Spectrum < Array
 
   def *(input)
     sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
-    self_resmpled = GSL::Vector.alloc(self.resample(sample).map {|pt| pt[1]})
-    input_resmpled = GSL::Vector.alloc(input.resample(sample).map {|pt| pt[1]})
-    self_resmpled * input_resmpled.col
+    self_resmpled_v = GSL::Vector.alloc(self.resample(sample).map {|pt| pt[1]})
+    input_resmpled_v = GSL::Vector.alloc(input.resample(sample).map {|pt| pt[1]})
+    self_resmpled_v * input_resmpled_v.col
+  end
+
+  def -(input)
+    sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
+    self_resampled = self.resample(sample)
+    input_resmpled = input.resample(sample)
+    raise "bang" unless self_resampled.size == input_resmpled.size
+    self_resampled.each_index do |i|
+      self_resampled[i][1] -= input_resmpled[i][1]
+    end
+
+    self_resampled
   end
 
 end

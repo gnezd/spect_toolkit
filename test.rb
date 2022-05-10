@@ -168,6 +168,14 @@ def inner_pdct_test
   puts "Cos*Sin: #{sin * cos}, #{cos * sin}"
 end
 
-resampling_test
+def subtraction_test
+  spect = Spectrum.new 'testdata/spectra/24_11_0.tsv'
+  puts "spect * spect: #{spect * spect}"
+  spect2 = spect-spect
+  puts "(spect - spect)^2: #{spect2 * spect2}"
+end
+#resampling_test
 #inner_pdct_test
-fitting_test
+#fitting_test
+
+subtraction_test
