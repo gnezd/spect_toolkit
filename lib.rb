@@ -9,6 +9,7 @@
 # In general, mode extraction can be representated as a matrix acting on a spectrum but this requires spectrum spectrum constructing and lacks the freedom of passing blocks and conditions
 # An even more general way of doing things is to pass into sum_up() a list of criteria on the wavelengths
 require 'gsl'
+require 'nokogiri'
 
 def plot_map(scan, sum = nil)
   if sum == nil
@@ -178,7 +179,8 @@ class Spectrum < Array
     @units = ['', 'counts']
     super Array.new() {[0.0, 0.0]}
     # Load from tsv/csv if path given
-    if path && (File.exist? path)
+    #if path && (File.exist? path) too gracious!
+    if path
       fin = File.open path, 'r'
       lines = fin.readlines
       lines.shift if lines[0] =~ /^Frame[\t,]/
@@ -193,6 +195,7 @@ class Spectrum < Array
           self[i] = [wv, intensity]
         end
         @name = File.basename(path)
+        update_info
       else
         puts "No seperator found in #{path}"
       end
@@ -236,13 +239,46 @@ class Spectrum < Array
       result[i] = [x, y]
     end
     result.units = @units
-    result.name = @name + '-ma2'
+    result.name = @name + "-ma#{radius}"
     result.update_info
     result
   end
 
+  def local_max(loosen = nil)
+    raise "Loosen neighborhood should be number of points" unless loosen.is_a? Integer or loosen == nil
+    result = []
+    (1..self.size-2).each do |i|
+      if self[i][1] > self[i+1][1] && self[i][1] > self[i-1][1]
+        result.push self[i]
+      end
+    end
+
+    loosened = []
+    if loosen
+      puts "start loosening with radius #{loosen}"
+      i = 0
+      while i < result.size - 1
+        if (result[i][0] - result[i+1][0])**2 + (result[i][1] - result[i+1][1])**2 > loosen**2
+          loosened.push result[i]
+          loosened.push result[i+1] if i == result.size-2
+          i +=1
+        else
+          loser = (result[i][1] - result[i+1][1] >= 0) ? i : i+1
+          #puts "comparing #{result[i..i+1]}, loser is #{loser}"
+          result.delete_at loser
+          loosened.push result[i] if i == result.size-1
+          #puts "deleting at #{loser}"
+        end
+      end
+      result = loosened
+    end
+    result
+  end
+
+
   def resample(sample_in)
-    raise "Expecting 1D array to be passed in" unless sample.all? Numeric
+    raise "Not a sampling 1D array" unless sample_in.is_a? Array
+    raise "Expecting 1D array to be passed in" unless sample_in.all? Numeric
     sample = sample_in.sort # Avoid mutating the resample array
     
     update_info
@@ -295,6 +331,22 @@ class Spectrum < Array
     end
   end
 
+  def /(input)
+    raise "Not being devided by a number." unless input.is_a? Numeric
+    self.each {|pt| pt[1] = pt[1].to_f / input}
+  end
+
+  def +(input)
+    sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
+    self_resampled = self.resample(sample)
+    input_resmpled = input.resample(sample)
+    raise "bang" unless self_resampled.size == input_resmpled.size
+    self_resampled.each_index do |i|
+      self_resampled[i][1] += input_resmpled[i][1]
+    end
+    self_resampled
+  end
+
   def -(input)
     sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
     self_resampled = self.resample(sample)
@@ -303,25 +355,35 @@ class Spectrum < Array
     self_resampled.each_index do |i|
       self_resampled[i][1] -= input_resmpled[i][1]
     end
-
     self_resampled
   end
 
+  def uniform_resample(n)
+    spacing = (@spectral_range[1] - @spectral_range[0]).to_f / n
+    sample = (0..n-1).map{|i| @spectral_range[0] + (i+0.5) * spacing}
+    self.resample sample
+  end
 end
 
-def plot_spectra(spectra)
+def plot_spectra(spectra, options = {})
   raise "Not an array of spectra input." unless (spectra.is_a? Array) && (spectra.all? Spectrum)
 
   # Check if they align in x_units
   x_units = spectra.map {|spectrum| spectrum.units[0]}
   raise "Some spectra have different units!" unless x_units.all? {|unit| unit == x_units[0]}
 
-  plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
-  Dir.mkdir plotdir
+  if options['outdir']
+    plotdir = options['outdir']
+  else
+    plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
+  end
+  Dir.mkdir plotdir unless Dir.exist? plotdir
+
   plots = []
-  spectra.each do |spectrum|
+   plots += options['plotline_inject'] if options['plotline_inject']
+  spectra.each_with_index do |spectrum, i|
     spectrum.write_tsv(plotdir + '/' + spectrum.name + '.tsv')
-    plots.push "'#{plotdir}/#{spectrum.name}.tsv' with lines"
+    plots.push "'#{plotdir}/#{spectrum.name}.tsv' with lines lt #{i+1}"
   end
   plotline = "plot " + plots.join(", \\\n")
   gplot = File.open plotdir + "/gplot", 'w'
@@ -338,6 +400,7 @@ GPLOT_HEADER
   set output '#{plotdir}/spect_plot.svg'
   replot
 GPLOT_replot
+  gplot.puts options['extra_setup'] if options['extra_setup']
   gplot.puts plot_replot
   gplot.close
   system("gnuplot #{plotdir}/gplot")
@@ -360,7 +423,7 @@ def quick_plot(data)
   plotlines = []
   data[0].each_with_index do |column, i|
     # Assume for now no headder line
-    plotlines.push "u 1:($#{i}) t '#{i}'"
+    plotlines.push "u 1:($#{i+1}) t '#{i+1}'"
   end
       
   plot_line = "plot 'output/#{data_fname}.tsv'" + plotlines.join(", \\\n'' ")
@@ -381,4 +444,31 @@ GPLOT_replot
   gplot_out.close
   `gnuplot 'output/#{data_fname}.gplot'`
   data_fname
+end
+
+def matrix_write(matrix, path)
+  raise "Some entries in data are different in length" unless matrix.all? {|line| line.size == matrix[0].size}
+  matrix_out = File.open path, 'w'
+  matrix.each do |line|
+    matrix_out.puts line.join "\t" 
+  end
+  matrix_out.close
+end
+
+def gaussian(sample, pos, width, height)
+  basis = Spectrum.new
+  basis.name = "#{pos}-#{width}-#{height}"
+  sample.each do |x|
+    basis.push [x, Math.exp(-(((x - pos) / width)**2)) * height]
+  end
+  basis
+end
+
+def lorentzian(sample, pos, width, height)
+  basis = Spectrum.new
+  basis.name = "lorenzian-#{pos}-#{width}-#{height}"
+  sample.each do |x|
+    basis.push [x, height.to_f / (1+ (2.0 * (x - pos) / width)**2)]
+  end
+  basis
 end

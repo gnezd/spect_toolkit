@@ -156,26 +156,30 @@ end
 
 def fitting_test
   spect = Spectrum.new 'output/10-spect.tsv'
-
-  lineshape = Proc.new{|pos, width, height, x|
-    Math.exp(-((x - pos) / width)**2) * height
+  spect = spect.uniform_resample(2000)
+  spect.each {|pt| pt[1] -= 600}
+    #Math.exp(-((x - pos) / width)**2 / 2) / (width * 2**0.5 * Math::PI)
+  lineshape = Proc.new{|pos, width, x|
+    Math.exp(-(((x - pos) / width)**2))
   }
-  #puts lineshape[0,1,1,1]
+  
+  # Generation of bases matrix
   bases = []
   position_scan_density = 20
   width_scan_density = 20
-
+  spectral_width = spect.spectral_range[1] - spect.spectral_range[0]
+  puts "spectral width: #{spectral_width}"
   # 十分的疊床架屋
-  (0..position_scan_density - 1).each do |position|
+  (0..position_scan_density - 1).each do |i|
     pos_column = Array.new()
     (0..width_scan_density - 1).each do |j|
       basis = Spectrum.new
-      basis.name = "#{position}-#{j}"
-      spect.each_with_index do |pt, i|
-        pos = spect.size.to_f * (position + 0.5) / (position_scan_density)
-        width = spect.size.to_f / (j + 1)
-        height = pt[1]
-        basis.push [pt[0], lineshape[pos, width, 1, i]]
+      pos = spect.spectral_range[0] + spectral_width * (i + 0.5) / (position_scan_density)
+      height = spect.resample([pos])[0][1]
+      width = spectral_width / (j + 2)
+      basis.name = "#{pos}-#{width}-#{height}"
+      spect.each do |pt|
+        basis.push [pt[0], lineshape[pos, width, pt[0]] * height]
       end
       pos_column.push basis
     end
@@ -183,32 +187,52 @@ def fitting_test
   end
 
   puts "bases generated: a 2d array of width #{bases.size} and height #{bases[0].size}"
-  to_plot = []
+
+  # Take a look at some bases
+  sample = spect.map {|pt| pt[0]}
+  a = gaussian(sample, 19000, 2650, 495)
+  b = gaussian(sample, 24700, 1400, 1900)
+  to_plot = [spect, a, b, spect - a - b, spect2]
+  #to_plot = [spect, ]
   
-  inner_pdct_matrix = Array.new(position_scan_density) {Array.new(width_scan_density)}
-  normalizer = spect*spect
-  (0..position_scan_density - 1).each do |i|
-    (0..width_scan_density - 1).each do |j|
-      diff = spect - bases[i][j] * (spect * bases[i][j])
-      inner_pdct_matrix[i][j] = diff * diff
+  #to_plot.each {|basis| puts "Norm of #{basis.name}: #{basis * basis}"}
+  #to_plot = [bases[19][19], bases[18][19]]
+  #5.times {to_plot.push(bases[rand(bases.size-1)][rand(bases[0].size-1)])}
+  #plot_spectra to_plot, {'outdir' =>'./bases_preview', 'plotline_inject' => ["'output/10-spect.tsv' w lines"], 'extra_setup' => ["set y2tics"]}
+  plot_spectra to_plot, {'outdir' =>'./bases_preview'}
+
+  # Start plotting some values such as inner product or substraction residual bla bla
+  inner_pdct_matrix = Array.new(bases.size) {Array.new(bases[0].size) {0.0}}
+  substr_matrix = Array.new(bases.size) {Array.new(bases[0].size) {0.0}}
+  (0..bases.size - 1).each do |i|
+    (0..bases[0].size - 1).each do |j|
+      inner_pdct_matrix[i][j] = (spect * bases[i][j])
+      diff = spect - bases[i][j]
+      substr_matrix[i][j] = diff * diff
     end
   end
-  puts "normalizer: #{normalizer}"
-  plot_spectra [spect*(1/(spect*spect)), bases[0][8] * (1/(bases[0][9]*bases[0][9]))]
 
-  inner_pdct_out = File.new "output/inner_pdct.dat", 'w'
-  inner_pdct_matrix.each do |ln|
-    inner_pdct_out.puts ln.join "\t"
-  end
-  inner_pdct_out.close
+  matrix_write(inner_pdct_matrix, "output/inner_pdct.dat")
+  matrix_write(substr_matrix, "output/substr.dat")
+
+
 
   plot_command = <<GPLOT_HEADER
-  set terminal png size 800,600 lw 2
-  set output 'output/inner_pdct.png'
-  plot 'output/inner_pdct.dat' matrix w image pixels
-  set terminal svg size 800,600 lw 2 mouse enhanced standalone
+  set terminal svg size 800,1600 lw 2 mouse enhanced standalone
   set output 'output/inner_pdct.svg'
-  replot
+  set size 1.0, 1.0
+  set origin 0.0, 0.0
+  set multiplot
+  set size 1, 0.5
+  set origin 0.0, 0.5
+  set xrange [-0.5:*]
+  set yrange [-0.5:*]
+  set title 'Inner product'
+  plot 'output/inner_pdct.dat' matrix w image pixels
+  set size 1, 0.5
+  set origin 0.0, 0.0
+  set title 'Diff'
+  plot 'output/substr.dat' matrix w image pixels
 GPLOT_HEADER
   gplot_temp = File.new 'output/inner_pdct.gplot', 'w'
   gplot_temp.puts plot_command
@@ -217,4 +241,125 @@ GPLOT_HEADER
   spect.write_tsv 'bg_corrected.tsv'
 end
 
-fitting_test
+def only_fit_and_fft
+  spect = Spectrum.new 'output/10-spect.tsv'
+  spect = spect.uniform_resample(2000)
+  spect2 = Spectrum.new('fft_contest/24_11_0.tsv').uniform_resample(2000)
+  spect2 = spect2.uniform_resample(2000)
+  spect.each {|pt| pt[1] -= 630}
+  sample = spect.map {|pt| pt[0]}
+  a = gaussian(sample, 19300, 2650, 475)
+  b = gaussian(sample, 24800, 1200, 1900)
+  substracted = spect - a - b
+  substracted.name = 'substracted'
+  to_plot = [spect, a, b, substracted, spect2]
+
+
+  fts = []
+  ft_plots = []
+  to_plot.each_with_index do |sp, spi|
+    ft = GSL::Vector.alloc(sp.map{|pt| pt[1]}).fft
+    ft = ft[0..199] #cutoff ^.<
+    ft = ft.to_complex2.abs
+    fts.push ft
+
+    ftout = File.new "fft_contest/#{sp.name}-ft.tsv" , 'w'
+    ft.each_index do |i|
+        ftout.puts "#{i}\t#{ft[i]}"
+    end
+    ftout.close
+    ft_plots.push "'fft_contest/#{sp.name}-ft.tsv' u 1:($2) with lines t '#{sp.name}-ft' axes x2y2 lt #{spi+1}"
+  end
+  ft_plots.reverse!
+  plot_spectra to_plot, {'outdir' => './bases_preview', 'plotline_inject' => ft_plots, 'extra_setup' => ['set y2tics', 'set x2tics', 'set x2range [3:*]']}
+end
+
+def rule_based_fitting
+  spect = Spectrum.new('output/10-spect.tsv').uniform_resample(2000)
+  sample = spect.map{|pt| pt[0]}
+  ma = spect.ma(5)
+  maxes = ma.local_max(100)
+  maxes.pop(13)
+  puts maxes.size
+  maxes_out = File.open './r_b_fitting/maxes.tsv', 'w'
+  maxes.each do |pt|
+    maxes_out.puts pt.join "\t"
+  end
+  maxes_out.close
+  peaks = []
+  maxes.each do |pt|
+    peaks.push lorentzian(sample, pt[0], 100, pt[1]-620)
+  end 
+  #puts maxes.size
+  fitted = peaks.reduce :+
+  to_plot = [spect, ma, fitted]
+  fitted.name = 'fitted'
+  fitted_ft = GSL::Vector.alloc(fitted.map{|pt| pt[1]}).fft
+  fitted_ft = fitted_ft[0..199]
+  fitted_ft = fitted_ft.to_complex2.abs
+
+  ftout = File.open 'r_b_fitting/fitted_ft.tsv', 'w'
+  fitted_ft.each_index do |i|
+    ftout.puts "#{i}\t#{fitted_ft[i]}"
+  end
+  ftout.close
+
+  plot_spectra to_plot, {'outdir' => './r_b_fitting', 'plotline_inject' => ["'./r_b_fitting/maxes.tsv' w points t 'peaks'", "'r_b_fitting/fitted_ft.tsv' w lines axes x2y2"]}
+end
+
+def the_ft_myth
+
+end
+
+def lorentzian_test
+  sample = (0..999).map {|x| x.to_f / 10}
+  a = lorentzian(sample, 50, 30, 20)
+  b = gaussian(sample, 50, 30, 20)
+  plot_spectra [a, b]
+end
+
+#rule_based_fitting
+
+def read_spe
+  fin = File.open 'testdata/spe'
+  raw = fin.read.freeze
+  fin.close
+  puts "raw size: #{raw.size}"
+  #puts 0x1000.to_i
+  headder = raw[0..0x1000]
+  #puts raw.size
+  xmlstart = raw.index('<SpeFormat')
+  binary_data = raw[0x1004..xmlstart-1]
+  xml = raw[xmlstart..-1]
+  doc = Nokogiri.XML xml
+  wvtext = doc.search('Wavelength').map {|link| link.content}[0]
+  x = doc.search('SensorMapping').attr('x').value.to_i
+  w = doc.search('SensorMapping').attr('width').value.to_i
+  n_of_frame = doc.search('DataBlock').attr('count').value.to_i
+  nm = wvtext.split(',')
+  puts "nm: #{nm[0]}, #{nm[-1]}"
+  wv = wvtext.split(',')[x..x+w-1].map {|wavelength| 10000000 / wavelength.to_f}
+  puts wv.size
+  puts wv[0..2]
+  puts binary_data.size
+  puts binary_data.size.to_f / w
+  ints = binary_data.unpack("S*")
+  puts ints.size / 1339
+  
+  #ints.each_with_index {|pt, i| pts.push([i, pt])}
+  #quick_plot pts
+
+  random_matrix = Array.new(200) {Array.new(200) {0}}
+  (0..199).each do |i|
+    (0..199).each do |j|
+      random_matrix[i][j] = ints[(i* 200 + j)*w..(i*200+j+1)*w].inject :+
+    end
+    #random_matrix[i].shift(22)
+    random_matrix[i].reverse! if i % 2 == 1
+  end
+
+  matrix_write(random_matrix, 'random.tsv')
+
+end
+
+read_spe
