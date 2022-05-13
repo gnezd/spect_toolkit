@@ -88,7 +88,18 @@ class Scan < Array
     super Array.new(width) {Array.new(height) {Array.new(depth) {Spectrum.new()}}}
   end
 
-  def load
+  def load(options)
+    case File.extname @path
+    when /\.[cC][sS][vV]/
+      load_csv options
+    when /\.[sS][pP][eE]/
+      load_spe options
+    else
+      raise "File extension of #{@path} not recognizable."
+    end
+  end
+
+  def load_csv(options)
     fin = File.open @path, 'r'
     puts "Reading #{@path}..."
     lines = fin.readlines
@@ -137,9 +148,6 @@ class Scan < Array
         self[width-1-i][j][k].push [wv, intensity]
       end
     end
-
-
-
     # Update all spectra
     puts "Loading done. Updating info of spectra."
     self.each do |row|
@@ -150,9 +158,59 @@ class Scan < Array
         end
       end
     end
-
     @loaded = true
     puts "done"
+  end
+
+  def load_spe(options)
+    # File read
+    fin = File.open @path
+    raw = fin.read.freeze
+    fin.close
+    xml_index = raw[678..685].unpack1('Q')
+
+    binary_data = raw[0x1004..xml_index-1]
+    unpacked_counts = binary_data.unpack('S*')
+    xml = Nokogiri.XML(raw[xml_index..-1]).remove_namespaces!
+
+    # ROI on CCD determines starting wavelength
+    x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+    @framesize = xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
+    @frames = xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
+    wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
+    @wv = wavelengths_nm.map {|nm| 10000000.0 / nm} # wavanumber
+
+    raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{width} * #{height} * #{depth} * #{@framesize}." unless unpacked_counts.size == @width * @height * @depth* @framesize
+
+    # Set unit and name
+    @spectrum_units = ['wavenumber', 'counts']
+
+    # Spectrum building
+    (0..@width-1).each do |i|
+      (0..@height-1).each do |j|
+        if j % 2 == 1 && options['s_scan'] == true
+          #puts "Loading spe assuming s_scan"
+          relabel_i = @width - i - 1
+        else
+          relabel_i = i
+        end
+        (0..depth-1).each do |k|
+          frame_st = (k * (@width * @height) + j * @width + i) * @framesize
+          unpacked_counts[frame_st .. frame_st + @framesize - 1].each_with_index do |value, sp_index|
+            self[relabel_i][j][k].push [@wv[sp_index], value]
+          end
+        end
+      end
+    end
+    # Update spectra info
+    (0..@width-1).each do |i|
+      (0..@height-1).each do |j|
+        (0..@depth-1).each do |k| 
+          self[i][j][k].update_info
+          self.spectrum_units = @spectrum_units
+        end
+      end
+    end
   end
 
   def extract_spect(points)

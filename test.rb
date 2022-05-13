@@ -4,7 +4,7 @@ require 'gsl'
 def loading_test()
   require 'benchmark'
   puts "Starting time: #{Time.now}"
-  scan = Scan.new('testdata/csv', 'testdata', 45, 45, 3)
+  scan = Scan.new('testdata/csv.csv', 'testdata', [45, 45, 3])
   puts "Starting to load: #{Time.now}"
   scan.load
 
@@ -325,41 +325,48 @@ def read_spe
   raw = fin.read.freeze
   fin.close
   puts "raw size: #{raw.size}"
-  #puts 0x1000.to_i
-  headder = raw[0..0x1000]
-  #puts raw.size
-  xmlstart = raw.index('<SpeFormat')
-  binary_data = raw[0x1004..xmlstart-1]
-  xml = raw[xmlstart..-1]
-  doc = Nokogiri.XML xml
-  wvtext = doc.search('Wavelength').map {|link| link.content}[0]
-  x = doc.search('SensorMapping').attr('x').value.to_i
-  w = doc.search('SensorMapping').attr('width').value.to_i
-  n_of_frame = doc.search('DataBlock').attr('count').value.to_i
-  nm = wvtext.split(',')
-  puts "nm: #{nm[0]}, #{nm[-1]}"
-  wv = wvtext.split(',')[x..x+w-1].map {|wavelength| 10000000 / wavelength.to_f}
-  puts wv.size
-  puts wv[0..2]
-  puts binary_data.size
-  puts binary_data.size.to_f / w
-  ints = binary_data.unpack("S*")
-  puts ints.size / 1339
-  
-  #ints.each_with_index {|pt, i| pts.push([i, pt])}
-  #quick_plot pts
+  xml_index = raw[678..685].unpack1('Q')
+  puts "xmlstart: #{xml_index}"
 
-  random_matrix = Array.new(200) {Array.new(200) {0}}
-  (0..199).each do |i|
-    (0..199).each do |j|
-      random_matrix[i][j] = ints[(i* 200 + j)*w..(i*200+j+1)*w].inject :+
+  binary_data = raw[0x1004..xml_index-1]
+  xml = Nokogiri.XML(raw[xml_index..-1]).remove_namespaces!
+  
+  # ROI on CCD determines starting wavelength
+  x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+  w = xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
+  frames = xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
+  wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, w].map {|x| x.to_f}
+  wavenumbers = wavelengths_nm.map {|nm| 10000000.0 / nm}
+
+  width = 200
+  height = 200
+
+  unpacked_counts = binary_data.unpack('S*')
+  raise "0_o unpacked ints has a length of #{unpacked_counts.size}" unless unpacked_counts.size == width * height * w
+
+  random_matrix = Array.new(width) {Array.new(height) {0}}
+  (0..width - 1).each do |i|
+    #puts "procissing line #{i}"
+    (0..height - 1).each do |j|
+      sum = unpacked_counts[(j * width + i) * w .. (j * width + i + 1) * w -1].sum
+      if j % 2 == 0
+        random_matrix[i][j] = unpacked_counts[(j * width + i) * w .. (j * width + i + 1) * w -1].sum
+      else
+        random_matrix[width - i - 1][j] = unpacked_counts[(j * width + i) * w .. (j * width + i + 1) * w -1].sum
+      end
+
     end
     #random_matrix[i].shift(22)
-    random_matrix[i].reverse! if i % 2 == 1
   end
-
   matrix_write(random_matrix, 'random.tsv')
+  matrix_write(random_matrix.transpose, 'randomt.tsv')
 
 end
 
-read_spe
+def load_spe
+  scan = Scan.new 'testdata/2566-3-smparea1-100x100from0-0-w-200x200x1 16_07_22 microPL.spe', '2566-3-survey', [200, 200, 1]
+  scan.load({'s_scan' => true})
+  plot_map(scan)
+end
+
+load_spe
