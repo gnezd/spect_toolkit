@@ -386,7 +386,102 @@ end
 
 def test_la
   # 少時不讀書
+  x_0 = GSL::Matrix.alloc([10, 5], [20,5], [20,45], [10,45])
+  angle = 2 * Math::PI * 30 / 360
+  rotator = GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
+  rotated = x_0 * rotator
+  puts "Rotator:"
+  puts rotator
+
+  # Check rotation with some inner products
+  diff_2_0 = rotated.row(2) - rotated.row(0)
+  diff_1_3 = rotated.row(1) - rotated.row(3)
+  puts "Pre-rotation (2-0) . (1-3)"
+  puts diff_2_0 * diff_1_3.transpose
+  
+  diff_2_0 = x_0.row(2) - x_0.row(0)
+  diff_1_3 = x_0.row(1) - x_0.row(3)
+  puts "Post-rotation (2-0) . (1-3)"
+  puts diff_2_0 * diff_1_3.transpose
+
+  reconstructed_r = (x_0.transpose * x_0).invert * (x_0.transpose * rotated)
+  puts "Reconstructed rotator"
+  puts reconstructed_r
+
+  randomized = rotated.clone
+  randomized.map! {|e| e+=(100-rand(200))/1000}
+  puts "Random blurring:"
+  puts randomized
+  puts "Reconstruct it:"
+  puts (x_0.transpose * x_0).invert * (x_0.transpose * randomized)
+
+  gplot_out = File.new 'output/sample_alignment_plot.gplot', 'w'
+  gplot_out.puts '$original<<ORIG'
+  x_0.each_row do |row|
+    gplot_out.puts row.to_a.join "\t"
+  end
+  gplot_out.puts x_0.row(0).to_a.join "\t"
+  gplot_out.puts 'ORIG'
+
+  gplot_out.puts '$rotated<<ROT'
+  randomized.each_row do |row|
+    gplot_out.puts row.to_a.join "\t"
+  end
+  gplot_out.puts randomized.row(0).to_a.join "\t"
+  gplot_out.puts 'ROT'
+
+  gplot_end = <<EOGPL
+set terminal svg
+set output 'output/sample_alignment.svg'
+set size ratio 1
+set xrange [0:60]
+set yrange [-10:50]
+plot $original w lines title 'original', $rotated w lines title 'rotated'
+EOGPL
+  gplot_out.puts gplot_end
+  gplot_out.close
+  `gnuplot output/sample_alignment_plot.gplot`
+
+  puts "----------"
+  puts "Now with displacement"
+  displaced = rot_dis(x_0, 0, GSL::Vector.alloc([4, 30]))
+  puts "Displaced:"
+  puts displaced
+  displacement = GSL::Vector.alloc(2)
+  displaced.each_row do |row|
+    displacement = displacement + row
+  end
+  x_0.each_row do |row|
+    displacement -= row
+  end
+  displacement = displacement / x_0.size1
+  puts "Displacement: #{displacement}"
+
+  moved = GSL::Matrix.alloc(displaced.size1, displaced.size2)
+  (0..moved.size1-1).each do |j|
+    moved.set_row(j, displaced.row(j) - displacement)
+  end
+
+  puts "Move back:"
+  puts moved
+  puts "Reconstruct it:"
+  puts (x_0.transpose * x_0).invert * (x_0.transpose * moved)
+  puts "Theoretical value for 50° rotation:"
+  puts GSL::Matrix.alloc([Math.cos(50), Math.sin(50)], [-Math.sin(50), Math.cos(50)]).transpose
 
 end
 
-t#est_read_drop
+def rot_dis(input, angle, displacement)
+  rotator = GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
+  result = input * rotator
+  expanded_displacement = GSL::Matrix.alloc(input.size1, 2)
+  (0..input.size1-1).each do |j|
+    expanded_displacement.set_row(j, displacement)
+  end
+
+  #puts displacement
+  #puts expanded_displacement
+  result + expanded_displacement
+end 
+
+test_la
