@@ -84,8 +84,8 @@ scan.load
 fft1 = Proc.new{|spect| 
   ft = GSL::Vector.alloc(spect.map{|pt| pt[1]}).fft # 究極一行文
   ft = ft.to_complex2.abs # Be positive
-  ft[9..19].sum
 }
+  ft[9..19].sum
 plot_map scan, fft1
 scan.name = 'Test_simple_sum'
 plot_map scan
@@ -369,4 +369,24 @@ def load_spe
   plot_map(scan)
 end
 
-load_spe
+def test_read_drop
+  fin = File.open '/mnt/h/Dropbox/RCAS/Workspace/Q2/14-May/2566-3-smparea1-survey2-noS 02_09_32 microPL.spe', 'rb'
+  raw = fin.read
+  puts "raw size should be 107165401, found: #{raw.size}"
+  fin.close
+  xml_index = raw[678..685].unpack1('Q')
+  binary_data = raw[0x1004..xml_index-1]
+  unpacked_counts = binary_data.unpack('S*')
+  puts "xml_index: #{xml_index}, diff with filesize = #{raw.size - xml_index}"
+  xml = Nokogiri.XML(raw[xml_index..-1]).remove_namespaces!
+  x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+  puts x0
+  # Couldn't reproduce the unexpected cutoff QQ
+end
+
+def test_la
+  # 少時不讀書
+
+end
+
+t#est_read_drop

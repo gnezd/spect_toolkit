@@ -165,16 +165,19 @@ class Scan < Array
   def load_spe(options)
     # File read
     fin = File.open @path
-    raw = fin.read.freeze
+    rawsize = fin.size
+    raw = fin.read(rawsize).freeze
     fin.close
     xml_index = raw[678..685].unpack1('Q')
-
+    xml_raw = raw[xml_index..-1]
     binary_data = raw[0x1004..xml_index-1]
     unpacked_counts = binary_data.unpack('S*')
-    xml = Nokogiri.XML(raw[xml_index..-1]).remove_namespaces!
-
+    xml = Nokogiri.XML(xml_raw).remove_namespaces!
+    #puts "xml_raw.size: #{xml_raw.size}"
+    
     # ROI on CCD determines starting wavelength
     x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+
     @framesize = xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
     @frames = xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
     wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
@@ -299,6 +302,14 @@ class Spectrum < Array
     result.units = @units
     result.name = @name + "-ma#{radius}"
     result.update_info
+    result
+  end
+
+  def deriv
+    result = Spectrum.new
+    (0..self.size-2).each do |i|
+      result.push [(self[i][0] + self[i+1][0])/2, (self[i+1][1] - self[i][1])/(self[i+1][0] - self[i][0])]
+    end
     result
   end
 
