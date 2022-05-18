@@ -541,3 +541,36 @@ def lorentzian(sample, pos, width, height)
   end
   basis
 end
+
+def gplot_datablock(name, data, verbose = false)
+  raise "Expecting data to be an array" unless data.is_a? Array
+  puts "Generating datablock named #{name} with #{data.size} lines" if verbose
+  output = "$#{name}<<EO#{name}"
+  data.to_a.each do |pt| # Catch the case if it were a matrix
+    output += pt.join "\t"
+    output += "\n"
+  end
+  output += "EO#{name}"
+  output
+end
+
+# Gives the rotation matrix needed to rotate origin to a resulting point set, when acted on that point set
+def rotator_solve(origin)
+  (origin.transpose * origin).invert * origin.transpose
+end
+
+def rotator(angle)
+  GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
+end
+
+def center_of_mass(x)
+# In form of:
+# [[x1 y1]
+# [x2 y2]]
+# ...
+  result = GSL::Vector.alloc(x.size2)
+  x.each_row do |row|
+    result = result + row
+  end
+  result / x.size1
+end

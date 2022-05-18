@@ -474,6 +474,7 @@ EOGPL
 
 end
 
+
 def rot_dis(input, angle, displacement)
   rotator = GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
   result = input * rotator
