@@ -386,34 +386,34 @@ end
 
 def test_la
   # 少時不讀書
-  x_0 = GSL::Matrix.alloc([10, 5], [20,5], [20,45], [10,45])
+  x_0 = GSL::Matrix.alloc([1000, 500], [2000,500], [2000,4500], [1000,4500])
   angle = 2 * Math::PI * 30 / 360
   rotator = GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
   rotated = x_0 * rotator
-  puts "Rotator:"
-  puts rotator
+  #puts "Rotator:"
+  #puts rotator
 
   # Check rotation with some inner products
   diff_2_0 = rotated.row(2) - rotated.row(0)
   diff_1_3 = rotated.row(1) - rotated.row(3)
-  puts "Pre-rotation (2-0) . (1-3)"
-  puts diff_2_0 * diff_1_3.transpose
+#  puts "Pre-rotation (2-0) . (1-3)"
+#  puts diff_2_0 * diff_1_3.transpose
   
   diff_2_0 = x_0.row(2) - x_0.row(0)
   diff_1_3 = x_0.row(1) - x_0.row(3)
-  puts "Post-rotation (2-0) . (1-3)"
-  puts diff_2_0 * diff_1_3.transpose
+#  puts "Post-rotation (2-0) . (1-3)"
+#  puts diff_2_0 * diff_1_3.transpose
 
   reconstructed_r = (x_0.transpose * x_0).invert * (x_0.transpose * rotated)
-  puts "Reconstructed rotator"
-  puts reconstructed_r
+#  puts "Reconstructed rotator"
+ # puts reconstructed_r
 
   randomized = rotated.clone
   randomized.map! {|e| e+=(100-rand(200))/1000}
-  puts "Random blurring:"
-  puts randomized
-  puts "Reconstruct it:"
-  puts (x_0.transpose * x_0).invert * (x_0.transpose * randomized)
+#  puts "Random blurring:"
+ # puts randomized
+  #puts "Reconstruct it:"
+  #puts (x_0.transpose * x_0).invert * (x_0.transpose * randomized)
 
   gplot_out = File.new 'output/sample_alignment_plot.gplot', 'w'
   gplot_out.puts '$original<<ORIG'
@@ -443,31 +443,34 @@ EOGPL
   `gnuplot output/sample_alignment_plot.gplot`
 
   puts "----------"
-  puts "Now with displacement"
-  displaced = rot_dis(x_0, 0, GSL::Vector.alloc([4, 30]))
-  puts "Displaced:"
-  puts displaced
-  displacement = GSL::Vector.alloc(2)
-  displaced.each_row do |row|
-    displacement = displacement + row
-  end
-  x_0.each_row do |row|
-    displacement -= row
-  end
-  displacement = displacement / x_0.size1
-  puts "Displacement: #{displacement}"
-
-  moved = GSL::Matrix.alloc(displaced.size1, displaced.size2)
-  (0..moved.size1-1).each do |j|
-    moved.set_row(j, displaced.row(j) - displacement)
-  end
-
-  puts "Move back:"
-  puts moved
-  puts "Reconstruct it:"
-  puts (x_0.transpose * x_0).invert * (x_0.transpose * moved)
-  puts "Theoretical value for 50° rotation:"
-  puts GSL::Matrix.alloc([Math.cos(50), Math.sin(50)], [-Math.sin(50), Math.cos(50)]).transpose
+  puts "x_0:\n#{x_0}"
+  puts "has C. o. M.:"
+  puts center_of_mass(x_0)
+  displacement = GSL::Vector.alloc([4, 30])
+  angle = 50.0 / 360 * 2 * Math::PI
+  puts "Now with rotation of #{angle}°` and displacement: #{displacement}"
+  displaced = rot_dis(x_0, angle, displacement)
+  puts "Displaced: \n#{displaced}"
+  puts "has C. o. M.: #{center_of_mass(displaced)}"
+  puts "Difference: #{center_of_mass(displaced) - center_of_mass(x_0)}, certainly not the same as #{displacement} 因受旋轉迫害"
+  # Solution: rotate back edges rather than vertices
+  edging = GSL::Matrix.I(displaced.size1)
+  (0..edging.size1-2).each {|j| edging.swap_rows!(j, j+1) }
+  edging = GSL::Matrix.I(displaced.size1) - edging
+  displaced_edge = edging * displaced
+  puts "edging matrix: \n #{edging}"
+  puts "edges: \n#{displaced_edge}"
+  x_0_edge = edging * x_0
+  puts "x_0.edge: \n#{x_0_edge}"
+  edge_rotator = rotator_solve(x_0_edge) * displaced_edge
+  puts "edge_rotator: \n #{edge_rotator}"
+  puts "50° rotator: \n#{rotator(50.0/360*2*Math::PI)}"
+  puts "-----All together now-----"
+  puts "First perform rotation from x_0:"
+  pre_shift = x_0 * edge_rotator
+  puts pre_shift
+  puts "Then find the move of C. o. M.:"
+  puts (center_of_mass(displaced) - center_of_mass(pre_shift))
 
 end
 
@@ -483,5 +486,24 @@ def rot_dis(input, angle, displacement)
   #puts expanded_displacement
   result + expanded_displacement
 end 
+
+# Gives the rotation matrix needed to rotate origin to a resulting point set, when acted on that point set
+def rotator_solve(origin)
+  (origin.transpose * origin).invert * origin.transpose
+end
+def rotator(angle)
+  GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
+end
+def center_of_mass(x)
+# In form of:
+# [[x1 y1]
+# [x2 y2]]
+# ...
+  result = GSL::Vector.alloc(x.size2)
+  x.each_row do |row|
+    result = result + row
+  end
+  result / x.size1
+end
 
 test_la
