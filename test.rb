@@ -387,80 +387,24 @@ end
 def test_la
   # 少時不讀書
   x_0 = GSL::Matrix.alloc([1000, 500], [2000,500], [2000,4500], [1000,4500])
-  angle = 2 * Math::PI * 30 / 360
-  rotator = GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
-  rotated = x_0 * rotator
-  #puts "Rotator:"
-  #puts rotator
-
-  # Check rotation with some inner products
-  diff_2_0 = rotated.row(2) - rotated.row(0)
-  diff_1_3 = rotated.row(1) - rotated.row(3)
-#  puts "Pre-rotation (2-0) . (1-3)"
-#  puts diff_2_0 * diff_1_3.transpose
-  
-  diff_2_0 = x_0.row(2) - x_0.row(0)
-  diff_1_3 = x_0.row(1) - x_0.row(3)
-#  puts "Post-rotation (2-0) . (1-3)"
-#  puts diff_2_0 * diff_1_3.transpose
-
-  reconstructed_r = (x_0.transpose * x_0).invert * (x_0.transpose * rotated)
-#  puts "Reconstructed rotator"
- # puts reconstructed_r
-
-  randomized = rotated.clone
-  randomized.map! {|e| e+=(100-rand(200))/1000}
-#  puts "Random blurring:"
- # puts randomized
-  #puts "Reconstruct it:"
-  #puts (x_0.transpose * x_0).invert * (x_0.transpose * randomized)
-
-  gplot_out = File.new 'output/sample_alignment_plot.gplot', 'w'
-  gplot_out.puts '$original<<ORIG'
-  x_0.each_row do |row|
-    gplot_out.puts row.to_a.join "\t"
-  end
-  gplot_out.puts x_0.row(0).to_a.join "\t"
-  gplot_out.puts 'ORIG'
-
-  gplot_out.puts '$rotated<<ROT'
-  randomized.each_row do |row|
-    gplot_out.puts row.to_a.join "\t"
-  end
-  gplot_out.puts randomized.row(0).to_a.join "\t"
-  gplot_out.puts 'ROT'
-
-  gplot_end = <<EOGPL
-set terminal svg
-set output 'output/sample_alignment.svg'
-set size ratio 1
-set xrange [0:60]
-set yrange [-10:50]
-plot $original w lines title 'original', $rotated w lines title 'rotated'
-EOGPL
-  gplot_out.puts gplot_end
-  gplot_out.close
-  `gnuplot output/sample_alignment_plot.gplot`
-
-  puts "----------"
+  gplot_data = gplot_datablock('original', x_0, {:polygon => true})
   puts "x_0:\n#{x_0}"
   puts "has C. o. M.:"
   puts center_of_mass(x_0)
+  # Check some inner products
   displacement = GSL::Vector.alloc([4, 30])
   angle = 50.0 / 360 * 2 * Math::PI
   puts "Now with rotation of #{angle}°` and displacement: #{displacement}"
   displaced = rot_dis(x_0, angle, displacement)
+  gplot_data += gplot_datablock('displaced', displaced, {:polygon => true})
   puts "Displaced: \n#{displaced}"
   puts "has C. o. M.: #{center_of_mass(displaced)}"
   puts "Difference: #{center_of_mass(displaced) - center_of_mass(x_0)}, certainly not the same as #{displacement} 因受旋轉迫害"
+
   # Solution: rotate back edges rather than vertices
-  edging = GSL::Matrix.I(displaced.size1)
-  (0..edging.size1-2).each {|j| edging.swap_rows!(j, j+1) }
-  edging = GSL::Matrix.I(displaced.size1) - edging
-  displaced_edge = edging * displaced
-  puts "edging matrix: \n #{edging}"
+  displaced_edge = row_diff(displaced.size1) * displaced
   puts "edges: \n#{displaced_edge}"
-  x_0_edge = edging * x_0
+  x_0_edge = row_diff(x_0.size1) * x_0
   puts "x_0.edge: \n#{x_0_edge}"
   edge_rotator = rotator_solve(x_0_edge) * displaced_edge
   puts "edge_rotator: \n #{edge_rotator}"
@@ -472,6 +416,33 @@ EOGPL
   puts "Then find the move of C. o. M.:"
   puts (center_of_mass(displaced) - center_of_mass(pre_shift))
 
+  puts "Finally test numerical stability against random noise:"
+  # Randomize
+  randomized = displaced.clone
+  randomized.map! {|e| e+=(50-rand(100))}
+  gplot_data += gplot_datablock('randomized', randomized, {:polygon => true})
+  puts "Random blurring: \n#{randomized}"
+  puts "With C. o. M. of: #{center_of_mass(randomized)}"
+
+  edge_rotator = rotator_solve(x_0_edge) * (row_diff(randomized.size1) * randomized)
+  edge_rotator = edge_rotator / edge_rotator.norm * (2**0.5)
+  puts "Restored rotator: \n#{edge_rotator}"
+  puts "Restored shift: #{center_of_mass(randomized) - center_of_mass(x_0 * edge_rotator)}"
+  puts "Difference:"
+  puts edge_rotator - rotator(angle)
+  puts displacement - (center_of_mass(randomized) - center_of_mass(x_0 * edge_rotator)) 
+
+  gplot_out = File.new 'output/sample_alignment_plot.gplot', 'w'
+  gplot_end = <<EOGPL
+set terminal svg mouse standalone
+set output 'output/sample_alignment.svg'
+set size ratio -1
+plot $original w lines title 'original', $displaced w lines title 'displaced', $randomized w lines title 'randomized'
+EOGPL
+  gplot_out.puts gplot_data
+  gplot_out.puts gplot_end
+  gplot_out.close
+  `gnuplot output/sample_alignment_plot.gplot`
 end
 
 
@@ -488,23 +459,56 @@ def rot_dis(input, angle, displacement)
   result + expanded_displacement
 end 
 
-# Gives the rotation matrix needed to rotate origin to a resulting point set, when acted on that point set
-def rotator_solve(origin)
-  (origin.transpose * origin).invert * origin.transpose
-end
-def rotator(angle)
-  GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
-end
-def center_of_mass(x)
-# In form of:
-# [[x1 y1]
-# [x2 y2]]
-# ...
-  result = GSL::Vector.alloc(x.size2)
-  x.each_row do |row|
-    result = result + row
+def test_find_conversion
+  # 1. Given coordinates of sample initial alignment (x_0), and current alignment (x_1), find the rotation (R) and displacement (D) so that x_0 * R + D.
+  # 2. Then convert a set of x_0 coord to the new alignment coord
+  x_0 = GSL::Matrix.alloc([1.387, 18.29],
+  [16.052, 14.29],
+  [16.653, 14.528],
+  [22.644, 12.321],
+  [23.56, 16.902],
+  [22.973, 17.59])
+  x_1 = GSL::Matrix.alloc([2.210, 13.518],
+  [17.360, 14.339],
+  [17.865, 14.755],
+  [24.236, 14.543],
+  [23.656, 19.178],
+  [22.881, 19.650])
+  rotator2566 = rotator_solve(row_diff(x_0.size1)*x_0) * row_diff(x_1.size1)*x_1
+  puts "2566-5 realign: \n#{rotator2566}"
+  puts "Norm of rotator: #{rotator2566.norm}"
+  displacement = center_of_mass(x_1) - center_of_mass(x_0 * rotator2566)
+  puts "Displacement: #{displacement}"
+  x_fit = x_0 * rotator2566 
+  (0..x_fit.size1-1).each do |j|
+    x_fit.set_row(j, x_fit.row(j) + displacement)
   end
-  result / x.size1
-end
 
-test_la
+  puts "Errors:"
+  puts x_1 - x_fit
+  points_data = gplot_datablock('original', x_0, {:polygon => true})
+  points_data += gplot_datablock('new', x_1, {:polygon => true})
+  points_data += gplot_datablock('original_transformed', x_fit, {:polygon => true})
+
+  smparea1 = GSL::Vector.alloc([12.639, 18.397])
+  smparea1_new_coord = smparea1 * rotator2566 + displacement
+  puts "Sample area 1: #{smparea1.to_a}, converts to #{smparea1_new_coord.to_a}"
+  
+  gplot_out = File.new 'output/2566-5_alignment_plot.gplot', 'w'
+  gplot_end = <<EOGPL
+  set title '2566-5 alignment'
+set terminal svg mouse standalone
+set output 'output/2566-5_alignment.svg'
+set size ratio -1
+set object 1 circle at #{smparea1.to_a.join(',')}
+set label 'Smp area 1' at #{smparea1.to_a.join(',')}
+set object 2 circle at #{smparea1_new_coord.to_a.join(',')}
+set label 'Smp area 1 converted' at #{smparea1_new_coord.to_a.join(',')}
+plot $original w lines title '30Apr', $new w lines title '19May', $original_transformed w lines title 'original\\_transformed'
+EOGPL
+  gplot_out.puts points_data
+  gplot_out.puts gplot_end
+  gplot_out.close
+  `gnuplot output/2566-5_alignment_plot.gplot`
+
+end

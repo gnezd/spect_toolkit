@@ -542,15 +542,18 @@ def lorentzian(sample, pos, width, height)
   basis
 end
 
-def gplot_datablock(name, data, verbose = false)
-  raise "Expecting data to be an array" unless data.is_a? Array
-  puts "Generating datablock named #{name} with #{data.size} lines" if verbose
-  output = "$#{name}<<EO#{name}"
+def gplot_datablock(name, data, options = {})
+  puts "Generating datablock named #{name} with #{data.size} lines" if options['verbose']
+  output = "$#{name}<<EO#{name}\n"
   data.to_a.each do |pt| # Catch the case if it were a matrix
     output += pt.join "\t"
     output += "\n"
   end
-  output += "EO#{name}"
+  if options[:polygon] == true
+    output += data.to_a[0].join "\t"
+    output += "\n"
+  end
+  output += "EO#{name}\n"
   output
 end
 
@@ -561,6 +564,13 @@ end
 
 def rotator(angle)
   GSL::Matrix.alloc([Math.cos(angle), Math.sin(angle)], [-Math.sin(angle), Math.cos(angle)]).transpose
+end
+
+def row_diff(size)
+  result = GSL::Matrix.I(size)
+  (0..size-2).each {|j| result.swap_rows!(j, j+1) }
+  result = GSL::Matrix.I(size) - result
+  result
 end
 
 def center_of_mass(x)
