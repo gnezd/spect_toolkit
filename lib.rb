@@ -88,7 +88,8 @@ class Scan < Array
     super Array.new(width) {Array.new(height) {Array.new(depth) {Spectrum.new()}}}
   end
 
-  def load(options)
+  def load(options = {})
+    puts options
     case File.extname @path
     when /\.[cC][sS][vV]/
       load_csv options
@@ -164,6 +165,7 @@ class Scan < Array
 
   def load_spe(options)
     # File read
+    puts "loading spe #{@path} with options #{options}"
     fin = File.open @path
     rawsize = fin.size
     raw = fin.read(rawsize).freeze
@@ -191,7 +193,7 @@ class Scan < Array
     # Spectrum building
     (0..@width-1).each do |i|
       (0..@height-1).each do |j|
-        if j % 2 == 1 && options['s_scan'] == true
+        if j % 2 == 1 && options[:s_scan] == true
           #puts "Loading spe assuming s_scan"
           relabel_i = @width - i - 1
         else
