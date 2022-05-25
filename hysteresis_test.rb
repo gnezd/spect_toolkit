@@ -1,11 +1,11 @@
 require './lib.rb'
-scan = Scan.new 'testdata/spe.spe', '2566-3-s_scan', [200, 200, 1]
-#scan.load({:s_scan => true})
-puts "Loading finished, plotting"
-#plot_map scan
-
-Dir.mkdir 'output/fighting_hysteresis' unless Dir.exist? 'output/fighting_hysteresis'
 =begin
+scan = Scan.new 'testdata/spe.spe', '2566-3-s_scan', [200, 200, 1]
+scan.load({:s_scan => true})
+puts "Loading finished, plotting"
+plot_map scan
+=end
+Dir.mkdir 'output/fighting_hysteresis' unless Dir.exist? 'output/fighting_hysteresis'
 # Let's first play with intensity
 fin = File.open 'output/fighting_hysteresis/2566-3-s_scan_0.tsv', 'r'
 lines = fin.readlines
@@ -25,12 +25,9 @@ odd = GSL::Vector.alloc(matrix[0].size)
   end
 end
 
-puts even.size
-puts odd.size
+even_resmpled = Array.new(even.size * 10)
 
-arr = [even.to_a, odd.to_a].transpose
-puts arr.size
-puts arr[0].size
-#quick_plot arr
-=end
-
+(0..even_resmpled.size-1).each do |i|
+  even_resmpled[i] = [i, even[i/10]]
+end
+puts even_resmpled

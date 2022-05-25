@@ -307,10 +307,6 @@ def rule_based_fitting
   plot_spectra to_plot, {'outdir' => './r_b_fitting', 'plotline_inject' => ["'./r_b_fitting/maxes.tsv' w points t 'peaks'", "'r_b_fitting/fitted_ft.tsv' w lines axes x2y2"]}
 end
 
-def the_ft_myth
-
-end
-
 def lorentzian_test
   sample = (0..999).map {|x| x.to_f / 10}
   a = lorentzian(sample, 50, 30, 20)
@@ -512,3 +508,33 @@ EOGPL
   `gnuplot output/2566-5_alignment_plot.gplot`
 
 end
+
+def spikiness_test
+  outdir = 'output/spikiness_test'
+  spects = Dir.glob("testdata/spectra/*.tsv").map {|fin| Spectrum.new(fin)}
+  diffs = []
+  spikinesses = []
+  puts "Iterating through: #{(spects.map{|sp| sp.name}).join ' | '}"
+  spects.each do |spect|
+    smoothed = spect.ma(3)
+    maxes = smoothed.local_max(100)
+    mins = smoothed.local_min(100)
+    maxes.write_tsv outdir + '/maxes.tsv'
+    mins.write_tsv outdir + '/mins.tsv'
+    minmax_diff = maxes - mins
+    minmax_diff.shift
+    minmax_diff.pop
+    minmax_diff.name = spect.name + '-minmax'
+    diffs.push minmax_diff
+    spikiness = ((minmax_diff * minmax_diff) / minmax_diff.size)**0.5
+    # But not normalized to intensity. Whether this is good or not...
+    puts "spikiness of #{spect.name}: #{spikiness}"
+    spikinesses.push spikiness
+  end
+  # 一行文最高
+  # Bind to spikiness and then sort along
+  (spikinesses, spects, diffs) = ([spikinesses, spects, diffs].transpose.sort_by {|row| row[0]}).transpose 
+  plot_spectra spects + diffs, {'outdir' => outdir}
+end
+
+spikiness_test

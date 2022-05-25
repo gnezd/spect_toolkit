@@ -8,6 +8,7 @@
 # Todo: accecpt code block for summing. Tricky: injection to whole loop
 # In general, mode extraction can be representated as a matrix acting on a spectrum but this requires spectrum spectrum constructing and lacks the freedom of passing blocks and conditions
 # An even more general way of doing things is to pass into sum_up() a list of criteria on the wavelengths
+require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
 
@@ -317,7 +318,7 @@ class Spectrum < Array
 
   def local_max(loosen = nil)
     raise "Loosen neighborhood should be number of points" unless loosen.is_a? Integer or loosen == nil
-    result = []
+    result = Spectrum.new
     (1..self.size-2).each do |i|
       if self[i][1] > self[i+1][1] && self[i][1] > self[i-1][1]
         result.push self[i]
@@ -341,11 +342,41 @@ class Spectrum < Array
           #puts "deleting at #{loser}"
         end
       end
-      result = loosened
+      loosened.each {|i| result.push i}
     end
     result
   end
 
+  def local_min(loosen = nil)
+    raise "Loosen neighborhood should be number of points" unless loosen.is_a? Integer or loosen == nil
+    result = Spectrum.new
+    (1..self.size-2).each do |i|
+      if self[i][1] < self[i+1][1] && self[i][1] < self[i-1][1]
+        result.push self[i]
+      end
+    end
+
+    loosened = []
+    if loosen
+      puts "start loosening with radius #{loosen}"
+      i = 0
+      while i < result.size - 1
+        if (result[i][0] - result[i+1][0])**2 + (result[i][1] - result[i+1][1])**2 > loosen**2
+          loosened.push result[i]
+          loosened.push result[i+1] if i == result.size-2
+          i +=1
+        else
+          loser = (result[i][1] - result[i+1][1] >= 0) ? i : i+1
+          #puts "comparing #{result[i..i+1]}, loser is #{loser}"
+          result.delete_at loser
+          loosened.push result[i] if i == result.size-1
+          #puts "deleting at #{loser}"
+        end
+      end
+      loosened.each {|i| result.push i}
+    end
+    result
+  end
 
   def resample(sample_in)
     raise "Not a sampling 1D array" unless sample_in.is_a? Array
@@ -585,4 +616,8 @@ def center_of_mass(x)
     result = result + row
   end
   result / x.size1
+end
+
+def vector_to_points
+
 end
