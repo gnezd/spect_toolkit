@@ -12,7 +12,7 @@ require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
 
-def plot_map(scan, sum = nil)
+def plot_map(scan, outdir, sum = nil)
   if sum == nil
     sum = Proc.new {|spect| (spect.map{|pt| pt[1]}).sum}
   end
@@ -27,7 +27,7 @@ def plot_map(scan, sum = nil)
     end
 
     # Export map and push
-    map_fout = File.open "output/#{scan.name}_#{z}.tsv", 'w'
+    map_fout = File.open "#{outdir}/#{scan.name}_#{z}.tsv", 'w'
     map.transpose.each do |row|
       map_fout.puts row.join "\t"
     end
@@ -35,10 +35,10 @@ def plot_map(scan, sum = nil)
     maps.push map
 
     # Plotting
-    gplot = File.open "output/#{scan.name}_#{z}.gplot", 'w'
+    gplot = File.open "#{outdir}/#{scan.name}_#{z}.gplot", 'w'
 gplot_content =<<GPLOT_HEAD
 set terminal svg size #{scan.width * 5},#{scan.height * 5} mouse enhanced standalone
-set output 'output/#{scan.name}_#{z}.svg'
+set output '#{outdir}/#{scan.name}_#{z}.svg'
 set border 0
 unset key
 unset xtics
@@ -48,15 +48,15 @@ set yrange[-0.5:#{scan.height}-0.5]
 set title '#{scan.name.gsub('_','\_')}-#{z}'
 unset colorbox
 set palette cubehelix negative
-plot 'output/#{scan.name}_#{z}.tsv' matrix with image pixels
+plot '#{outdir}/#{scan.name}_#{z}.tsv' matrix with image pixels
 set terminal png size #{scan.width * 5},#{scan.height * 5}
-set output 'output/#{scan.name}_#{z}.png'
+set output '#{outdir}/#{scan.name}_#{z}.png'
 replot
 GPLOT_HEAD
     gplot.puts gplot_content
     gplot.close
     puts "Plotting #{scan.name}_#{z}, W: #{scan.width}, H: #{scan.height}"
-    `gnuplot output/#{scan.name}_#{z}.gplot`
+    `gnuplot #{outdir}/#{scan.name}_#{z}.gplot`
   end
 end
 
@@ -327,7 +327,7 @@ class Spectrum < Array
 
     loosened = []
     if loosen
-      puts "start loosening with radius #{loosen}"
+      #puts "start loosening with radius #{loosen}"
       i = 0
       while i < result.size - 1
         if (result[i][0] - result[i+1][0])**2 + (result[i][1] - result[i+1][1])**2 > loosen**2
@@ -358,7 +358,7 @@ class Spectrum < Array
 
     loosened = []
     if loosen
-      puts "start loosening with radius #{loosen}"
+      #uts "start loosening with radius #{loosen}"
       i = 0
       while i < result.size - 1
         if (result[i][0] - result[i+1][0])**2 + (result[i][1] - result[i+1][1])**2 > loosen**2
@@ -464,6 +464,47 @@ class Spectrum < Array
     spacing = (@spectral_range[1] - @spectral_range[0]).to_f / n
     sample = (0..n-1).map{|i| @spectral_range[0] + (i+0.5) * spacing}
     self.resample sample
+  end
+
+  def spikiness(smooth, loosening)
+    smoothed = self.ma(3)
+    minmax_diff = smoothed.minmax(loosening)
+    spikiness = (minmax_diff * minmax_diff) / minmax_diff.size
+    # But not normalized to intensity. Whether this is good or not...
+    spikiness
+  end
+
+  def minmax(loosening)
+    result = self.local_max(loosening) - self.local_min(loosening)
+    # Cut off the (bg-zero)s at head and tail
+    result.shift
+    result.pop
+    result.name = self.name + '-minmax'
+    result
+  end
+
+  def sum
+    (self.map{|pt| pt[1]}).sum
+  end
+
+  # For debugging the bg noise sensitivity of minmax spike assay
+  def minmax_spike(r, loosen)
+    smoothed = self.ma(r)
+    maxes = smooth.local_max(loosen)
+    mins = smooth.local_min(loosen)
+    minmax = (maxes.mins).shift!.pop!
+    spikiness = (minmax * minmax) / minmax.size    
+    return [smoothed, maxes, mins, minmax, spikiness]
+  end
+
+  def stdev
+    sum = 0.0
+    sos = 0.0 # sum of squares
+    self.each do |pt|
+      sum += pt[1]
+      sos += pt[1] ** 2
+    end
+    ((sos - sum**2) / @size) ** 0.5
   end
 end
 

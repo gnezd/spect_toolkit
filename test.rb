@@ -509,32 +509,43 @@ EOGPL
 
 end
 
+def spikiness_dev_demo
+  outdir = './output/spikiness_demo'
+  Dir.mkdir outdir unless Dir.exists? outdir
+  spect = Spectrum.new './testdata/spectra/21.tsv'
+  smooth = spect.ma(3)
+  mins = smooth.local_min(100)
+  maxes = smooth.local_max(100)
+
+  maxes.write_tsv "#{outdir}/maxes.tsv"
+  mins.write_tsv "#{outdir}/mins.tsv"
+
+  minmax_diff = maxes - mins
+  minmax_diff.shift
+  minmax_diff.pop
+  minmax_diff.name = 'Minmax'
+
+  plot_spectra [spect, smooth, minmax_diff], {'outdir' => "#{outdir}-plots", 'plotline_inject' => ["'#{outdir}/mins.tsv' w points t 'mins'", "'#{outdir}/maxes.tsv' w points t 'maxes'"]}
+
+
+end
+
 def spikiness_test
   outdir = 'output/spikiness_test'
-  spects = Dir.glob("testdata/spectra/*.tsv").map {|fin| Spectrum.new(fin)}
-  diffs = []
+  spects = (Dir.glob("testdata/spectra/*.tsv").find_all {|fn| fn =~ /\d\d\.tsv$/}).map {|fin| Spectrum.new(fin)}
+  #diffs = []
   spikinesses = []
   puts "Iterating through: #{(spects.map{|sp| sp.name}).join ' | '}"
   spects.each do |spect|
-    smoothed = spect.ma(3)
-    maxes = smoothed.local_max(100)
-    mins = smoothed.local_min(100)
-    maxes.write_tsv outdir + '/maxes.tsv'
-    mins.write_tsv outdir + '/mins.tsv'
-    minmax_diff = maxes - mins
-    minmax_diff.shift
-    minmax_diff.pop
-    minmax_diff.name = spect.name + '-minmax'
-    diffs.push minmax_diff
-    spikiness = ((minmax_diff * minmax_diff) / minmax_diff.size)**0.5
     # But not normalized to intensity. Whether this is good or not...
+    spikiness = spect.spikiness(3, 100)
     puts "spikiness of #{spect.name}: #{spikiness}"
     spikinesses.push spikiness
   end
   # 一行文最高
   # Bind to spikiness and then sort along
-  (spikinesses, spects, diffs) = ([spikinesses, spects, diffs].transpose.sort_by {|row| row[0]}).transpose 
-  plot_spectra spects + diffs, {'outdir' => outdir}
+  #(spikinesses, spects, diffs) = ([spikinesses, spects, diffs].transpose.sort_by {|row| row[0]}).transpose 
+  (spikinesses, spects) = ([spikinesses, spects].transpose.sort_by {|row| row[0]}).transpose 
+  plot_spectra spects , {'outdir' => outdir}
 end
-
-spikiness_test
+spikiness_dev_demo
