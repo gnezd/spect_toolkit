@@ -548,4 +548,20 @@ def spikiness_test
   (spikinesses, spects) = ([spikinesses, spects].transpose.sort_by {|row| row[0]}).transpose 
   plot_spectra spects , {'outdir' => outdir}
 end
+
+def excise(scan, points)
+  raise "No two points given" unless points.is_a? Array && points.all? {|i| i.is_a? Array} && points.size ==2 && points.all? {|i| i.size == 2}
+  raise "scan wasn't loaded" unless (scan.is_a? Scan) && (scan.loaded)
+  points = points.sort_by! {|point| point[0]}
+  raise "x out of range" if point[0][0] >= scan.width
+  raise "y out of range" if point[0][1] >= scan.height || point[1][1] >= scan.height
+  slope = (point[1][1] - point[0][1]).to_f / (point[1][0] - point[0][0])
+
+end
+
+def excise_test
+  scan = Scan.new '/mnt/Dropbox/RCAS/Workspace/Q2/26-May/mappings/2566-5-smparea2-zoomin-rescan 09_11_37 microPL.spe', '2566-5-zoomin', [100, 100, 3]
+  scan.load
+
+end
 spikiness_dev_demo
