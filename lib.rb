@@ -491,11 +491,21 @@ class Spectrum < Array
   # For debugging the bg noise sensitivity of minmax spike assay
   def minmax_spike(r, loosen)
     smoothed = self.ma(r)
-    maxes = smooth.local_max(loosen)
-    mins = smooth.local_min(loosen)
-    minmax = (maxes.mins).shift!.pop!
-    spikiness = (minmax * minmax) / minmax.size    
-    return [smoothed, maxes, mins, minmax, spikiness]
+    maxes = smoothed.local_max(loosen)
+    mins = smoothed.local_min(loosen)
+    minmax = (maxes - mins).shift!.pop!
+    spikiness = (minmax * minmax) / minmax.size
+    [smoothed, maxes, mins, minmax, spikiness]
+  end
+
+  # Excise a line of spectra between two points in space
+  def excise(points)
+    load unless @loaded
+    raise "No two points given" unless (points.is_a? Array) && (points.all? {|i| i.is_a? Array}) && (points.size == 2) && (points.all? {|i| i.size == 3})
+    raise "Points #{points} out of range #{@wiidth} x #{@height} x #{@depth}" unless
+      points.all? {|pt| pt.all? {|coord| coord >=0 }} &&
+      points.all? {|pt| pt[0] < @width} &&
+
   end
 
   def stdev

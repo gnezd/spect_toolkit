@@ -549,7 +549,7 @@ def spikiness_test
   plot_spectra spects , {'outdir' => outdir}
 end
 
-def excise(scan, points)
+def dep_excise(scan, points)
   raise "No two points given" unless (points.is_a? Array) && (points.all? {|i| i.is_a? Array}) && (points.size == 2) && (points.all? {|i| i.size == 3})
   raise "scan wasn't loaded" unless (scan.is_a? Scan) && (scan.loaded)
   points = points.sort_by! {|point| point[0]}
@@ -587,8 +587,8 @@ end
 def excise_test
   scan = Scan.new '/mnt/h/Dropbox/RCAS/Workspace/Q2/26-May/mappings/2566-5-smparea2-zoomin-rescan 09_11_37 microPL.spe', '2566-5-zoomin', [100, 100, 3]
   scan.load
-  ex = excise(scan, [[68,69,0], [68,59,0]])
-  puts ex.size
+  ex = scan.excise([[68,69,0], [68,59,0]])
+  puts "excise size: #{ex.size}"
   puts ex.class
   puts ex[0].class
 
