@@ -234,6 +234,37 @@ class Scan < Array
     result
   end
 
+  # Excise a line of spectra between two points in space
+  def excise(points)
+    load unless @loaded
+    raise "No two points given" unless (points.is_a? Array) && (points.all? {|i| i.is_a? Array}) && (points.size == 2) && (points.all? {|i| i.size == 3})
+    raise "Points #{points} out of range #{@wiidth} x #{@height} x #{@depth}" unless \
+      points.all? {|pt| pt.all? {|coord| coord >=0 }} && \
+      points.all? {|pt| pt[0] < @width} && \
+      points.all? {|pt| pt[1] < @height} && \
+      points.all? {|pt| pt[2] < @depth}
+    diff = (0..2).map{|i| points[1][i] - points[0][i]}
+    puts "diff: #{diff}"
+    unless varying = diff.find_index {|x| x**2 >= 1} # First varying index, return single point extraction if false
+      puts "Not finding any diff"
+      return [self[points[0][0]][points[0][1]][points[0][2]]]
+    end
+    d = (0..2).map{|i| diff[i].to_f / diff[varying]}
+    puts "Direction vector: #{d}"
+
+    result = []
+    (0..diff[varying] * (diff[varying].positive? ? 1 : -1)).each do |t| # Parametric sweep
+      t /= (diff[varying]**2)**0.5 # Ugly but works
+      x = points[0][0] + t * diff[0]
+      y = points[0][1] + t * diff[1]
+      z = points[0][2] + t * diff[2]
+      spect = self[x][y][z]
+      spect.name = "#{@name}-#{x}-#{y}-#{z}"
+      result.push spect
+    end
+    result
+  end
+
 end
 
 class Spectrum < Array
@@ -498,15 +529,6 @@ class Spectrum < Array
     [smoothed, maxes, mins, minmax, spikiness]
   end
 
-  # Excise a line of spectra between two points in space
-  def excise(points)
-    load unless @loaded
-    raise "No two points given" unless (points.is_a? Array) && (points.all? {|i| i.is_a? Array}) && (points.size == 2) && (points.all? {|i| i.size == 3})
-    raise "Points #{points} out of range #{@wiidth} x #{@height} x #{@depth}" unless
-      points.all? {|pt| pt.all? {|coord| coord >=0 }} &&
-      points.all? {|pt| pt[0] < @width} &&
-
-  end
 
   def stdev
     sum = 0.0

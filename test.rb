@@ -587,10 +587,16 @@ end
 def excise_test
   scan = Scan.new '/mnt/h/Dropbox/RCAS/Workspace/Q2/26-May/mappings/2566-5-smparea2-zoomin-rescan 09_11_37 microPL.spe', '2566-5-zoomin', [100, 100, 3]
   scan.load
+  # Test for points out of range
+  # Test single pt
+  # Test vertical
+  # Test horizontal
+  # Test z dig
   ex = scan.excise([[68,69,0], [68,59,0]])
+
   puts "excise size: #{ex.size}"
-  puts ex.class
-  puts ex[0].class
+  puts "excise class: #{ex.class}"
+  puts "first point of excise class: #{ex[0].class}"
 
   plot_spectra ex, {'outdir' => '2566-5-zoom'}
 end
