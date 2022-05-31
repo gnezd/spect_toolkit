@@ -77,7 +77,7 @@ end
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth
+  attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded
   def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
@@ -99,6 +99,7 @@ class Scan < Array
     else
       raise "File extension of #{@path} not recognizable."
     end
+    @loaded = true
   end
 
   def load_csv(options)

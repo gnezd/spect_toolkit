@@ -550,18 +550,49 @@ def spikiness_test
 end
 
 def excise(scan, points)
-  raise "No two points given" unless points.is_a? Array && points.all? {|i| i.is_a? Array} && points.size ==2 && points.all? {|i| i.size == 2}
+  raise "No two points given" unless (points.is_a? Array) && (points.all? {|i| i.is_a? Array}) && (points.size == 2) && (points.all? {|i| i.size == 3})
   raise "scan wasn't loaded" unless (scan.is_a? Scan) && (scan.loaded)
   points = points.sort_by! {|point| point[0]}
-  raise "x out of range" if point[0][0] >= scan.width
-  raise "y out of range" if point[0][1] >= scan.height || point[1][1] >= scan.height
-  slope = (point[1][1] - point[0][1]).to_f / (point[1][0] - point[0][0])
-
+  raise "x out of range" if points[0][0] >= scan.width
+  raise "y out of range" if points[0][1] >= scan.height || points[1][1] >= scan.height
+  result = []
+  
+  slope_y = (points[1][1] - points[0][1]).to_f / (points[1][0] - points[0][0])
+  slope_z = (points[1][2] - points[0][2]).to_f / (points[1][0] - points[0][0])
+  if points[0][0] != points[1][0]
+    (points[0][0]..points[1][0]).each do |x|
+      y = (slope_y * (x - points[0][0]) + points[0][1]).to_i
+      z = (slope_z * (x - points[0][0]) + points[0][2]).to_i
+      spect = scan[x][y][z]
+      spect.name = "#{scan.name}-#{x}-#{y}-#{z}"
+      result.push spect
+    end
+  else
+    points.sort_by! {|point| point[1]}
+    (points[0][1]..points[1][1]).each do |y|
+      slope_z = (points[1][2] - points[0][2]).to_f / (points[1][1] - points[0][1])
+      z = (slope_z * (y - points[0][1]) + points[0][2]).to_i
+      x = points[0][0]
+      puts x
+      puts y
+      puts z
+      spect = scan[x][y][z]
+      spect.name = "#{scan.name}-#{x}-#{y}-#{z}"
+      result.push spect
+    end
+  end
+  result
 end
 
 def excise_test
-  scan = Scan.new '/mnt/Dropbox/RCAS/Workspace/Q2/26-May/mappings/2566-5-smparea2-zoomin-rescan 09_11_37 microPL.spe', '2566-5-zoomin', [100, 100, 3]
+  scan = Scan.new '/mnt/h/Dropbox/RCAS/Workspace/Q2/26-May/mappings/2566-5-smparea2-zoomin-rescan 09_11_37 microPL.spe', '2566-5-zoomin', [100, 100, 3]
   scan.load
+  ex = excise(scan, [[68,69,0], [68,59,0]])
+  puts ex.size
+  puts ex.class
+  puts ex[0].class
 
+  plot_spectra ex, {'outdir' => '2566-5-zoom'}
 end
-spikiness_dev_demo
+
+excise_test
