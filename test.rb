@@ -544,7 +544,7 @@ def spikiness_test
   end
   # 一行文最高
   # Bind to spikiness and then sort along
-  #(spikinesses, spects, diffs) = ([spikinesses, spects, diffs].transpose.sort_by {|row| row[0]}).transpose 
+  # (spikinesses, spects, diffs) = ([spikinesses, spects, diffs].transpose.sort_by {|row| row[0]}).transpose 
   (spikinesses, spects) = ([spikinesses, spects].transpose.sort_by {|row| row[0]}).transpose 
   plot_spectra spects , {'outdir' => outdir}
 end
@@ -601,4 +601,8 @@ def excise_test
   plot_spectra ex, {'outdir' => '2566-5-zoom'}
 end
 
-excise_test
+def sum_block_test
+  yield (3)
+end
+
+sum_block_test {|x| puts x**2}

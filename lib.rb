@@ -529,7 +529,6 @@ class Spectrum < Array
     [smoothed, maxes, mins, minmax, spikiness]
   end
 
-
   def stdev
     sum = 0.0
     sos = 0.0 # sum of squares
@@ -538,6 +537,12 @@ class Spectrum < Array
       sos += pt[1] ** 2
     end
     ((sos - sum**2) / @size) ** 0.5
+  end
+
+
+  def fft 
+    ft = GSL::Vector.alloc(self.map{|pt| pt[1]}).fft # 究極一行文
+    ft = ft.to_complex2.abs # Be positive
   end
 end
 
