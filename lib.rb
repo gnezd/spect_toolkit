@@ -12,67 +12,6 @@ require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
 
-def plot_map(scan, outdir, sum = nil)
-  if sum == nil
-    sum = Proc.new {|spect| (spect.map{|pt| pt[1]}).sum}
-  end
-  maps = []
-  # Iterate through z layers
-  (0..scan.depth-1).each do |z|
-    map = Array.new(scan.width) {Array.new(scan.height) {0.0}} # One slice
-    (0..scan.width-1).each do |x|
-      (0..scan.height-1).each do |y|
-        map[x][y] = sum[scan[x][y][z]]
-      end
-    end
-
-    # Export map and push
-    map_fout = File.open "#{outdir}/#{scan.name}_#{z}.tsv", 'w'
-    map.transpose.each do |row|
-      map_fout.puts row.join "\t"
-    end
-    map_fout.close
-    maps.push map
-
-    # Plotting
-    gplot = File.open "#{outdir}/#{scan.name}_#{z}.gplot", 'w'
-gplot_content =<<GPLOT_HEAD
-set terminal svg size #{scan.width * 5},#{scan.height * 5} mouse enhanced standalone
-set output '#{outdir}/#{scan.name}_#{z}.svg'
-set border 0
-unset key
-unset xtics
-unset ytics
-set xrange[-0.5:#{scan.width}-0.5]
-set yrange[-0.5:#{scan.height}-0.5]
-set title '#{scan.name.gsub('_','\_')}-#{z}'
-unset colorbox
-set palette cubehelix negative
-plot '#{outdir}/#{scan.name}_#{z}.tsv' matrix with image pixels
-set terminal png size #{scan.width * 5},#{scan.height * 5}
-set output '#{outdir}/#{scan.name}_#{z}.png'
-replot
-GPLOT_HEAD
-    gplot.puts gplot_content
-    gplot.close
-    puts "Plotting #{scan.name}_#{z}, W: #{scan.width}, H: #{scan.height}"
-    `gnuplot #{outdir}/#{scan.name}_#{z}.gplot`
-  end
-end
-
-# Return list of points in rectangular area defined by pt_1(x,y) to pt_2(x,y)
-def select_points(pt_1, pt_2)
-  raise "Not points" unless (pt_1.size == 3) && (pt_2.size == 3)
-  result = []
-  ([pt_1[0], pt_2[0]].sort[0]..[pt_1[0], pt_2[0]].sort[1]).each do |x|
-    ([pt_1[1], pt_2[1]].sort[0]..[pt_1[1], pt_2[1]].sort[1]).each do |y|
-      ([pt_1[2], pt_2[2]].sort[0]..[pt_1[2], pt_2[2]].sort[1]).each do |z|
-        result.push [x,y,z]
-      end
-    end
-  end
-  result
-end
 
 
 class Scan < Array
@@ -196,7 +135,7 @@ class Scan < Array
     (0..@width-1).each do |i|
       (0..@height-1).each do |j|
         if j % 2 == 1 && options[:s_scan] == true
-          #puts "Loading spe assuming s_scan"
+          puts "Loading with S-shape scan"
           relabel_i = @width - i - 1
         else
           relabel_i = i
@@ -210,6 +149,7 @@ class Scan < Array
       end
     end
     # Update spectra info
+    puts "Finished loading #{@name}, updating spectra info."
     (0..@width-1).each do |i|
       (0..@height-1).each do |j|
         (0..@depth-1).each do |k| 
@@ -265,6 +205,73 @@ class Scan < Array
     result
   end
 
+  # Plot a scanning map with respect to the summation function given in the block
+  def plot_map(outdir = nil)
+
+    outdir = @name unless outdir
+    Dir.mkdir outdir unless Dir.exist? outdir
+    map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
+    # Iterate through z layers
+    (0..@depth-1).each do |z|
+      map = Array.new(@width) {Array.new(@height) {0.0}} # One slice
+      (0..@width-1).each do |x|
+        (0..@height-1).each do |y|
+          map[x][y] = yield(self[x][y][z])
+        end
+      end
+
+      map_fout.puts "# z = #{z}"
+      map.transpose.each do |row|
+        map_fout.puts row.join "\t"
+      end
+      map_fout.print "\n\n"
+    end
+
+    # Export map and push
+    map_fout.close
+      # Plotting
+    gplot = File.open "#{outdir}/#{@name}.gplot", 'w'
+  gplot_content =<<GPLOT_HEAD
+  set terminal svg size #{@width * 5},#{@height * 5} mouse enhanced standalone
+  set output '#{outdir}/#{@name}.svg'
+  set border 0
+  set multiplot
+  set size ratio -1
+  unset key
+  unset xtics
+  unset ytics
+  set xrange[-0.5:#{@width}-0.5]
+  set yrange[-0.5:#{@height}-0.5]
+  set title '#{@name.gsub('_','\_')}'
+  unset colorbox
+  set palette cubehelix negative
+  #set terminal png size #{@width * 5},#{@height * 5}
+  #set output '#{outdir}/#{@name}.png'
+GPLOT_HEAD
+    gplot.puts gplot_content
+    (0..@depth-1).each do |z|
+      gplot.puts "set origin #{z.to_f / @depth},0"
+      gplot.puts "set size #{1.0/@depth}"
+      gplot.puts "plot'#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
+    end
+    gplot.close
+    puts "Plotting #{@name}, W: #{@width}, H: #{@height}"
+    `gnuplot #{outdir}/#{@name}.gplot`
+  end
+
+  # Return list of points in rectangular area defined by pt_1(x,y) to pt_2(x,y)
+  def select_points(pt_1, pt_2)
+    raise "Not points" unless (pt_1.size == 3) && (pt_2.size == 3)
+    result = []
+    ([pt_1[0], pt_2[0]].sort[0]..[pt_1[0], pt_2[0]].sort[1]).each do |x|
+      ([pt_1[1], pt_2[1]].sort[0]..[pt_1[1], pt_2[1]].sort[1]).each do |y|
+        ([pt_1[2], pt_2[2]].sort[0]..[pt_1[2], pt_2[2]].sort[1]).each do |z|
+          result.push [x,y,z]
+        end
+      end
+    end
+    result
+  end
 end
 
 class Spectrum < Array
