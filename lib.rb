@@ -232,28 +232,30 @@ class Scan < Array
       # Plotting
     gplot = File.open "#{outdir}/#{@name}.gplot", 'w'
   gplot_content =<<GPLOT_HEAD
-  set terminal svg size #{@width * 5},#{@height * 5} mouse enhanced standalone
-  set output '#{outdir}/#{@name}.svg'
-  set border 0
-  set multiplot
-  set size ratio -1
-  unset key
-  unset xtics
-  unset ytics
-  set xrange[-0.5:#{@width}-0.5]
-  set yrange[-0.5:#{@height}-0.5]
-  set title '#{@name.gsub('_','\_')}'
-  unset colorbox
-  set palette cubehelix negative
-  #set terminal png size #{@width * 5},#{@height * 5}
-  #set output '#{outdir}/#{@name}.png'
+set terminal svg size #{@width * 5 * @depth},#{@height * 5} mouse enhanced standalone
+set size ratio -1
+set output '#{outdir}/#{@name}.svg'
+set border 0
+unset key
+unset xtics
+unset ytics
+set xrange[-0.5:#{@width-0.5}]
+set yrange[-0.5:#{@height-0.5}]
+set title '#{@name.gsub('_','\_')}'
+unset colorbox
+set palette cubehelix negative
+#set terminal png size #{@width * 5},#{@height * 5}
+#set output '#{outdir}/#{@name}.png'
+set multiplot
 GPLOT_HEAD
     gplot.puts gplot_content
     (0..@depth-1).each do |z|
+      gplot.puts "set title 'z = #{z}'"
       gplot.puts "set origin #{z.to_f / @depth},0"
-      gplot.puts "set size #{1.0/@depth}"
+      gplot.puts "set size #{1.0/@depth},1"
       gplot.puts "plot'#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
     end
+    gplot.puts "unset multiplot"
     gplot.close
     puts "Plotting #{@name}, W: #{@width}, H: #{@height}"
     `gnuplot #{outdir}/#{@name}.gplot`
