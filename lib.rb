@@ -12,8 +12,6 @@ require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
 
-
-
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
   attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded
@@ -551,6 +549,38 @@ class Spectrum < Array
   def fft 
     ft = GSL::Vector.alloc(self.map{|pt| pt[1]}).fft # 究極一行文
     ft = ft.to_complex2.abs # Be positive
+  end
+end
+
+class Alignment
+  attr_accessor :name, :coords, :control_pts
+
+  # Record alignment with OM pictures named with microstage coordinate: c1-xx.xxx-yy.yyy-zz.zzz.bmp
+  def initialize(name, alignment_dir)
+    coords_arr = []
+    @control_pts = []
+    @name = name
+    raise "Not valid path: #{alignment_dir}" unless Dir.exist? alignment_dir
+    control_point_files = Dir.glob alignment_dir + "/*.bmp"
+    control_point_files.each do |fn|
+      if match = File.basename(fn).match(/^([^\-]+)\-(\d+\.\d\d\d)-(\d+\.\d\d\d)-(\d+\.\d\d\d)/)
+        coords_arr.push [match[2].to_f, match[3].to_f, match[4].to_f]
+        @control_pts.push [match[1], fn]
+      end
+    end
+    @coords = GSL::Matrix.alloc(coords_arr.flatten, coords_arr.size, 2)
+  end
+
+  # Express position recorded in alignment x_0 in this alignment coordinate
+  def express(x_0, pos)
+    raise "x_0 is not an Alignment" unless x_0.is_a? Alignment
+    raise "Size mismatch" unless x_0.coords.size == self.coords.size
+    (0..x_0.coords.size1-1).each do |i|
+      raise "Control points mismatch" unless x_0.control_pts[i][0] == self.control_pts[i][0]
+    end
+    rotator = rotator_solve(row_diff(x_0.coords.size1)*x_0.coords) * row_diff(@coords.size1) * @coords
+    displacement = center_of_mass(@coords) - center_of_mass(x_0.coords * rotator)
+    pos * rotator + displacement
   end
 end
 
