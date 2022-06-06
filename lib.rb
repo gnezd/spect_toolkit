@@ -206,8 +206,7 @@ class Scan < Array
   end
 
   # Plot a scanning map with respect to the summation function given in the block
-  def plot_map(outdir = nil)
-
+  def plot_map(outdir = nil, options = nil)
     outdir = @name unless outdir
     Dir.mkdir outdir unless Dir.exist? outdir
     map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
