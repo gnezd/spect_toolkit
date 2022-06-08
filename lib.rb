@@ -564,7 +564,9 @@ class Alignment
     control_point_files = Dir.glob alignment_dir + "/*.bmp"
     control_point_files.each do |fn|
       if match = File.basename(fn).match(/^([^\-]+)\-(\d+\.\d\d\d)-(\d+\.\d\d\d)-(\d+\.\d\d\d)/)
-        coords_arr.push [match[2].to_f, match[3].to_f, match[4].to_f]
+        #coords_arr.push [match[2].to_f, match[3].to_f, match[4].to_f]
+        # 2-dim for now for 3-dim requires more testing. rotator_solve might yet be incompatible
+        coords_arr.push [match[2].to_f, match[3].to_f]
         @control_pts.push [match[1], fn]
       end
     end
@@ -573,6 +575,13 @@ class Alignment
 
   # Express position recorded in alignment x_0 in this alignment coordinate
   def express(x_0, pos)
+    rotator, displacement = self.relative_to(x_0)
+    pos * rotator + displacement
+  end
+
+  # x1.relative_to(x0) gives the rotation and displacement so that x0*rotation + displacement = x1
+  def relative_to(x_0)
+    raise "x_0 is not an Alignment" unless x_0.is_a? Alignment
     raise "x_0 is not an Alignment" unless x_0.is_a? Alignment
     raise "Size mismatch" unless x_0.coords.size == self.coords.size
     (0..x_0.coords.size1-1).each do |i|
@@ -580,7 +589,7 @@ class Alignment
     end
     rotator = rotator_solve(row_diff(x_0.coords.size1)*x_0.coords) * row_diff(@coords.size1) * @coords
     displacement = center_of_mass(@coords) - center_of_mass(x_0.coords * rotator)
-    pos * rotator + displacement
+    [rotator, displacement]
   end
 end
 
@@ -735,6 +744,10 @@ def center_of_mass(x)
   result / x.size1
 end
 
-def vector_to_points
-
+def plot_alignments(alignments)
+  raise "Input Alignments!" unless alignments.is_a? Array && alignments.all? {|a| a.is_a? Alignment}
+  points_data = ""
+  alignments.each do |alignment|
+    points_data
+  end
 end
