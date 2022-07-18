@@ -1,4 +1,4 @@
-require './lib.rb'
+require './lib'
 require 'gsl'
 
 def loading_test()
@@ -601,8 +601,17 @@ def excise_test
   plot_spectra ex, {'outdir' => '2566-5-zoom'}
 end
 
-def sum_block_test
-  yield (3)
+def plot_map_test
+  scan = Scan.new 'testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', 'test_plot', [45, 45, 3]
+  scan.load
+  scan.plot_map {|spect| spect.signal_range[1]}
 end
 
-sum_block_test {|x| puts x**2}
+def structurally_read_spe
+  spe = Spe.new './testdata/atm-alq3-1 10_24_52 microPL.spe', 'AlQ3'
+  puts spe.last[0..5]
+  puts "====="
+  puts spe[-2][0..5]
+end
+
+structurally_read_spe

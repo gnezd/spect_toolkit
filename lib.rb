@@ -12,69 +12,6 @@ require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
 
-def plot_map(scan, outdir, sum = nil)
-  if sum == nil
-    sum = Proc.new {|spect| (spect.map{|pt| pt[1]}).sum}
-  end
-  maps = []
-  # Iterate through z layers
-  (0..scan.depth-1).each do |z|
-    map = Array.new(scan.width) {Array.new(scan.height) {0.0}} # One slice
-    (0..scan.width-1).each do |x|
-      (0..scan.height-1).each do |y|
-        map[x][y] = sum[scan[x][y][z]]
-      end
-    end
-
-    # Export map and push
-    map_fout = File.open "#{outdir}/#{scan.name}_#{z}.tsv", 'w'
-    map.transpose.each do |row|
-      map_fout.puts row.join "\t"
-    end
-    map_fout.close
-    maps.push map
-
-    # Plotting
-    gplot = File.open "#{outdir}/#{scan.name}_#{z}.gplot", 'w'
-gplot_content =<<GPLOT_HEAD
-set terminal svg size #{scan.width * 5},#{scan.height * 5} mouse enhanced standalone
-set output '#{outdir}/#{scan.name}_#{z}.svg'
-set border 0
-unset key
-unset xtics
-unset ytics
-set xrange[-0.5:#{scan.width}-0.5]
-set yrange[-0.5:#{scan.height}-0.5]
-set title '#{scan.name.gsub('_','\_')}-#{z}'
-unset colorbox
-set palette cubehelix negative
-plot '#{outdir}/#{scan.name}_#{z}.tsv' matrix with image pixels
-set terminal png size #{scan.width * 5},#{scan.height * 5}
-set output '#{outdir}/#{scan.name}_#{z}.png'
-replot
-GPLOT_HEAD
-    gplot.puts gplot_content
-    gplot.close
-    puts "Plotting #{scan.name}_#{z}, W: #{scan.width}, H: #{scan.height}"
-    `gnuplot #{outdir}/#{scan.name}_#{z}.gplot`
-  end
-end
-
-# Return list of points in rectangular area defined by pt_1(x,y) to pt_2(x,y)
-def select_points(pt_1, pt_2)
-  raise "Not points" unless (pt_1.size == 3) && (pt_2.size == 3)
-  result = []
-  ([pt_1[0], pt_2[0]].sort[0]..[pt_1[0], pt_2[0]].sort[1]).each do |x|
-    ([pt_1[1], pt_2[1]].sort[0]..[pt_1[1], pt_2[1]].sort[1]).each do |y|
-      ([pt_1[2], pt_2[2]].sort[0]..[pt_1[2], pt_2[2]].sort[1]).each do |z|
-        result.push [x,y,z]
-      end
-    end
-  end
-  result
-end
-
-
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
   attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded
@@ -196,7 +133,7 @@ class Scan < Array
     (0..@width-1).each do |i|
       (0..@height-1).each do |j|
         if j % 2 == 1 && options[:s_scan] == true
-          #puts "Loading spe assuming s_scan"
+          puts "Loading with S-shape scan"
           relabel_i = @width - i - 1
         else
           relabel_i = i
@@ -210,11 +147,12 @@ class Scan < Array
       end
     end
     # Update spectra info
+    puts "Finished loading #{@name}, updating spectra info."
     (0..@width-1).each do |i|
       (0..@height-1).each do |j|
         (0..@depth-1).each do |k| 
           self[i][j][k].update_info
-          self.spectrum_units = @spectrum_units
+          #self.spectrum_units = @spectrum_units
         end
       end
     end
@@ -265,6 +203,74 @@ class Scan < Array
     result
   end
 
+  # Plot a scanning map with respect to the summation function given in the block
+  def plot_map(outdir = nil, options = nil)
+    outdir = @name unless outdir
+    Dir.mkdir outdir unless Dir.exist? outdir
+    map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
+    # Iterate through z layers
+    (0..@depth-1).each do |z|
+      map = Array.new(@width) {Array.new(@height) {0.0}} # One slice
+      (0..@width-1).each do |x|
+        (0..@height-1).each do |y|
+          map[x][y] = yield(self[x][y][z])
+        end
+      end
+
+      map_fout.puts "# z = #{z}"
+      map.transpose.each do |row|
+        map_fout.puts row.join "\t"
+      end
+      map_fout.print "\n\n"
+    end
+
+    # Export map and push
+    map_fout.close
+      # Plotting
+    gplot = File.open "#{outdir}/#{@name}.gplot", 'w'
+  gplot_content =<<GPLOT_HEAD
+set terminal svg size #{@width * 5 * @depth},#{@height * 5} mouse enhanced standalone
+set size ratio -1
+set output '#{outdir}/#{@name}.svg'
+set border 0
+unset key
+unset xtics
+unset ytics
+set xrange[-0.5:#{@width-0.5}]
+set yrange[-0.5:#{@height-0.5}]
+set title '#{@name.gsub('_','\_')}'
+unset colorbox
+set palette cubehelix negative
+#set terminal png size #{@width * 5},#{@height * 5}
+#set output '#{outdir}/#{@name}.png'
+set multiplot
+GPLOT_HEAD
+    gplot.puts gplot_content
+    (0..@depth-1).each do |z|
+      gplot.puts "set title 'z = #{z}'"
+      gplot.puts "set origin #{z.to_f / @depth},0"
+      gplot.puts "set size #{1.0/@depth},1"
+      gplot.puts "plot'#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
+    end
+    gplot.puts "unset multiplot"
+    gplot.close
+    puts "Plotting #{@name}, W: #{@width}, H: #{@height}"
+    `gnuplot #{outdir}/#{@name}.gplot`
+  end
+
+  # Return list of points in rectangular area defined by pt_1(x,y) to pt_2(x,y)
+  def select_points(pt_1, pt_2)
+    raise "Not points" unless (pt_1.size == 3) && (pt_2.size == 3)
+    result = []
+    ([pt_1[0], pt_2[0]].sort[0]..[pt_1[0], pt_2[0]].sort[1]).each do |x|
+      ([pt_1[1], pt_2[1]].sort[0]..[pt_1[1], pt_2[1]].sort[1]).each do |y|
+        ([pt_1[2], pt_2[2]].sort[0]..[pt_1[2], pt_2[2]].sort[1]).each do |z|
+          result.push [x,y,z]
+        end
+      end
+    end
+    result
+  end
 end
 
 class Spectrum < Array
@@ -471,6 +477,7 @@ class Spectrum < Array
   end
 
   def +(input)
+    old_name = @name #preserve name, not to be changed by resample()
     sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
     self_resampled = self.resample(sample)
     input_resmpled = input.resample(sample)
@@ -478,6 +485,7 @@ class Spectrum < Array
     self_resampled.each_index do |i|
       self_resampled[i][1] += input_resmpled[i][1]
     end
+    self_resampled.name = old_name #preserve name, not to be changed by resample()
     self_resampled
   end
 
@@ -543,6 +551,84 @@ class Spectrum < Array
   def fft 
     ft = GSL::Vector.alloc(self.map{|pt| pt[1]}).fft # 究極一行文
     ft = ft.to_complex2.abs # Be positive
+  end
+end
+
+class Alignment
+  attr_accessor :name, :coords, :control_pts
+
+  # Record alignment with OM pictures named with microstage coordinate: c1-xx.xxx-yy.yyy-zz.zzz.bmp
+  def initialize(name, alignment_dir)
+    coords_arr = []
+    @control_pts = []
+    @name = name
+    raise "Not valid path: #{alignment_dir}" unless Dir.exist? alignment_dir
+    control_point_files = Dir.glob alignment_dir + "/*.bmp"
+    control_point_files.each do |fn|
+      if match = File.basename(fn).match(/^([^\-]+)\-(\d+\.\d\d\d)-(\d+\.\d\d\d)-(\d+\.\d\d\d)/)
+        #coords_arr.push [match[2].to_f, match[3].to_f, match[4].to_f]
+        # 2-dim for now for 3-dim requires more testing. rotator_solve might yet be incompatible
+        coords_arr.push [match[2].to_f, match[3].to_f]
+        @control_pts.push [match[1], fn]
+      end
+    end
+    @coords = GSL::Matrix.alloc(coords_arr.flatten, coords_arr.size, 2)
+  end
+
+  # Express position recorded in alignment x_0 in this alignment coordinate
+  def express(x_0, pos)
+    rotator, displacement = self.relative_to(x_0)
+    pos * rotator + displacement
+  end
+
+  # x1.relative_to(x0) gives the rotation and displacement so that x0*rotation + displacement = x1
+  def relative_to(x_0)
+    raise "x_0 is not an Alignment" unless x_0.is_a? Alignment
+    raise "x_0 is not an Alignment" unless x_0.is_a? Alignment
+    raise "Size mismatch" unless x_0.coords.size == self.coords.size
+    (0..x_0.coords.size1-1).each do |i|
+      raise "Control points mismatch" unless x_0.control_pts[i][0] == self.control_pts[i][0]
+    end
+    rotator = rotator_solve(row_diff(x_0.coords.size1)*x_0.coords) * row_diff(@coords.size1) * @coords
+    displacement = center_of_mass(@coords) - center_of_mass(x_0.coords * rotator)
+    [rotator, displacement]
+  end
+end
+
+class Spe < Array
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name
+  def initialize(path, name)
+    @path = path
+    @name = name
+    @spectrum_units = 'nm'
+    raise "No such file #{path}" unless File.exist? path
+    fin = File.open @path, 'rb'
+    raw = fin.read(fin.size).freeze
+    fin.close
+    # Starting position of xml part
+    xml_index = raw[678..685].unpack1('Q')
+    xml_raw = raw[xml_index..-1]
+    binary_data = raw[0x1004..xml_index-1]
+    unpacked_counts = binary_data.unpack('S*')
+    xml = Nokogiri.XML(xml_raw).remove_namespaces!
+    x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+
+    @framesize = xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
+    @frames = xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
+    raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+    wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
+    @wv = wavelengths_nm
+
+    super Array.new(@frames) {Spectrum.new()}
+    (0..@frames - 1).each do |i|
+      unpacked_counts[i * @framesize .. (i + 1) * @framesize - 1].each_with_index do |value, sp_index|
+        self[i].push [@wv[sp_index], value]
+        self[i].name = "#{@name}-#{i}"
+        self[i].spectral_range = [@wv[0], @wv[-1]]
+        self[i].units = @spectrum_units
+      end
+    end
+
   end
 end
 
@@ -697,6 +783,10 @@ def center_of_mass(x)
   result / x.size1
 end
 
-def vector_to_points
-
+def plot_alignments(alignments)
+  raise "Input Alignments!" unless alignments.is_a? Array && alignments.all? {|a| a.is_a? Alignment}
+  points_data = ""
+  alignments.each do |alignment|
+    points_data
+  end
 end
