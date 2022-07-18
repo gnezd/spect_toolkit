@@ -1,4 +1,4 @@
-require './lib.rb'
+require './lib'
 require 'gsl'
 
 def loading_test()
@@ -607,4 +607,11 @@ def plot_map_test
   scan.plot_map {|spect| spect.signal_range[1]}
 end
 
-plot_map_test
+def structurally_read_spe
+  spe = Spe.new './testdata/atm-alq3-1 10_24_52 microPL.spe', 'AlQ3'
+  puts spe.last[0..5]
+  puts "====="
+  puts spe[-2][0..5]
+end
+
+structurally_read_spe

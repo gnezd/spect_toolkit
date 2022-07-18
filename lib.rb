@@ -152,7 +152,7 @@ class Scan < Array
       (0..@height-1).each do |j|
         (0..@depth-1).each do |k| 
           self[i][j][k].update_info
-          self.spectrum_units = @spectrum_units
+          #self.spectrum_units = @spectrum_units
         end
       end
     end
@@ -477,6 +477,7 @@ class Spectrum < Array
   end
 
   def +(input)
+    old_name = @name #preserve name, not to be changed by resample()
     sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
     self_resampled = self.resample(sample)
     input_resmpled = input.resample(sample)
@@ -484,6 +485,7 @@ class Spectrum < Array
     self_resampled.each_index do |i|
       self_resampled[i][1] += input_resmpled[i][1]
     end
+    self_resampled.name = old_name #preserve name, not to be changed by resample()
     self_resampled
   end
 
@@ -590,6 +592,43 @@ class Alignment
     rotator = rotator_solve(row_diff(x_0.coords.size1)*x_0.coords) * row_diff(@coords.size1) * @coords
     displacement = center_of_mass(@coords) - center_of_mass(x_0.coords * rotator)
     [rotator, displacement]
+  end
+end
+
+class Spe < Array
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name
+  def initialize(path, name)
+    @path = path
+    @name = name
+    @spectrum_units = 'nm'
+    raise "No such file #{path}" unless File.exist? path
+    fin = File.open @path, 'rb'
+    raw = fin.read(fin.size).freeze
+    fin.close
+    # Starting position of xml part
+    xml_index = raw[678..685].unpack1('Q')
+    xml_raw = raw[xml_index..-1]
+    binary_data = raw[0x1004..xml_index-1]
+    unpacked_counts = binary_data.unpack('S*')
+    xml = Nokogiri.XML(xml_raw).remove_namespaces!
+    x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+
+    @framesize = xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
+    @frames = xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
+    raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+    wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
+    @wv = wavelengths_nm
+
+    super Array.new(@frames) {Spectrum.new()}
+    (0..@frames - 1).each do |i|
+      unpacked_counts[i * @framesize .. (i + 1) * @framesize - 1].each_with_index do |value, sp_index|
+        self[i].push [@wv[sp_index], value]
+        self[i].name = "#{@name}-#{i}"
+        self[i].spectral_range = [@wv[0], @wv[-1]]
+        self[i].units = @spectrum_units
+      end
+    end
+
   end
 end
 
