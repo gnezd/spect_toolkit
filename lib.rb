@@ -598,7 +598,7 @@ class Alignment
 end
 
 class Spe < Array
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :xml
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :xml, :frame_width, :frame_height
   def initialize(path, name)
     @path = path
     @name = name
@@ -637,6 +637,14 @@ class Spe < Array
       end
     else
       puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}"
+      super Array.new(@frames) {Array.new(@frame_width) {Array.new(@frame_height) {0}}}
+      (0..@frames - 1).each do |frame|
+        (0..@frame_height - 1).each do |row|
+          (0..@frame_width - 1).each do |element|
+            self[frame][element][row] = unpacked_counts[frame * @framesize + row * @frame_height + element]
+          end
+        end
+      end
     end
 
   end
