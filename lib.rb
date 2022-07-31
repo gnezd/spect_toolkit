@@ -8,7 +8,9 @@
 # Todo: accecpt code block for summing. Tricky: injection to whole loop
 # In general, mode extraction can be representated as a matrix acting on a spectrum but this requires spectrum spectrum constructing and lacks the freedom of passing blocks and conditions
 # An even more general way of doing things is to pass into sum_up() a list of criteria on the wavelengths
-require 'nmatrix'
+
+# No longer needed as long you export NMATRX=1
+# require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
 
@@ -596,7 +598,7 @@ class Alignment
 end
 
 class Spe < Array
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :xml
   def initialize(path, name)
     @path = path
     @name = name
@@ -610,23 +612,31 @@ class Spe < Array
     xml_raw = raw[xml_index..-1]
     binary_data = raw[0x1004..xml_index-1]
     unpacked_counts = binary_data.unpack('S*')
-    xml = Nokogiri.XML(xml_raw).remove_namespaces!
-    x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+    @xml = Nokogiri.XML(xml_raw).remove_namespaces!
+    x0 = @xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
 
-    @framesize = xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
-    @frames = xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
+    @frame_width = @xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
+    @frame_height = @xml.xpath('//Calibrations/SensorMapping').attr('height').value.to_i
+    @framesize = @frame_width * @frame_height
+    # puts "W: #{@frame_width} H: #{@frame_height}"
+    @frames = @xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
     raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
-    wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
+    wavelengths_nm = @xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
     @wv = wavelengths_nm
 
-    super Array.new(@frames) {Spectrum.new()}
-    (0..@frames - 1).each do |i|
-      unpacked_counts[i * @framesize .. (i + 1) * @framesize - 1].each_with_index do |value, sp_index|
-        self[i].push [@wv[sp_index], value]
-        self[i].name = "#{@name}-#{i}"
-        self[i].spectral_range = [@wv[0], @wv[-1]]
-        self[i].units = @spectrum_units
+    # Simple: a line of spectrum per frame
+    if @frame_height == 1
+      super Array.new(@frames) {Spectrum.new()}
+      (0..@frames - 1).each do |i|
+        unpacked_counts[i * @framesize .. (i + 1) * @framesize - 1].each_with_index do |value, sp_index|
+          self[i].push [@wv[sp_index], value]
+          self[i].name = "#{@name}-#{i}"
+          self[i].spectral_range = [@wv[0], @wv[-1]]
+          self[i].units = @spectrum_units
+        end
       end
+    else
+      puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}"
     end
 
   end
