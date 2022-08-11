@@ -604,7 +604,8 @@ end
 def plot_map_test
   scan = Scan.new 'testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', 'test_plot', [45, 45, 3]
   scan.load
-  scan.plot_map {|spect| spect.signal_range[1]}
+  #scan.plot_map {|spect| spect.signal_range[1]}
+  scan.plot_map {|spect| spect.from_to(300, 400)}
 end
 
 def structurally_read_spe
@@ -614,4 +615,4 @@ def structurally_read_spe
   puts spe[-2][0..5]
 end
 
-structurally_read_spe
+plot_map_test

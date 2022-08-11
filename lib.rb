@@ -554,6 +554,14 @@ class Spectrum < Array
     ft = GSL::Vector.alloc(self.map{|pt| pt[1]}).fft # 究極一行文
     ft = ft.to_complex2.abs # Be positive
   end
+
+  def from_to(from, to)
+    sum = 0.0
+    self.each do |pt|
+      sum += pt[1] if ((pt[0] > from) && (pt[0] < to))
+    end
+    sum
+  end
 end
 
 class Alignment
@@ -613,13 +621,19 @@ class Spe < Array
     binary_data = raw[0x1004..xml_index-1]
     unpacked_counts = binary_data.unpack('S*')
     @xml = Nokogiri.XML(xml_raw).remove_namespaces!
+    @frames = @xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
     x0 = @xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
 
-    @frame_width = @xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
-    @frame_height = @xml.xpath('//Calibrations/SensorMapping').attr('height').value.to_i
+    @area_width = @xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
+    @area_height = @xml.xpath('//Calibrations/SensorMapping').attr('height').value.to_i
+    @xbinning = @xml.xpath('//Calibrations/SensorMapping').attr('xBinning').value.to_i
+    @ybinning = @xml.xpath('//Calibrations/SensorMapping').attr('yBinning').value.to_i
+
+    # puts "W: #{@area_width}/#{@xbinning} H: #{@area_height}/#{@ybinning}"
+    @frame_width = @area_width / @xbinning
+    @frame_height = @area_height / @ybinning
     @framesize = @frame_width * @frame_height
-    # puts "W: #{@frame_width} H: #{@frame_height}"
-    @frames = @xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
+    
     raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
     wavelengths_nm = @xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
     @wv = wavelengths_nm
@@ -647,6 +661,39 @@ class Spe < Array
       end
     end
 
+  end
+
+  # Plotting ADPL data, with given density of scan per degree
+  def plot_adpl(scans_per_deg = 1)
+    data_export = Array.new(self.size) {Array.new(self[0].size) {0}}
+    self.each_with_index do |spectrum, i|
+      spectrum.each_with_index do |pt, j|
+        data_export[i][j] = pt[1]
+      end
+    end
+    tsv_name = @name + ".tsv"
+    matrix_write data_export, tsv_name
+
+gnuplot_content =<<GPLOTCONTENT
+set terminal png size 1000,800
+set xlabel 'wavelength (nm)'
+set ylabel 'angle (°)'
+unset key
+set pm3d map
+set pm3d interpolate 0,0
+
+set output '#{@name}.png'
+set title '#{@name}'
+
+set xrange [400:750]
+
+splot '#{@name}.tsv' matrix u ($1*0.30623 + 364.8464):($2/#{scans_per_deg}-90):3
+GPLOTCONTENT
+
+    gnuplot_fout = File.open "#{@name}.gplot", 'w'
+    gnuplot_fout.puts gnuplot_content
+    gnuplot_fout.close
+    `gnuplot #{@name}.gplot`
   end
 end
 
