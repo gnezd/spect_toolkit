@@ -603,9 +603,10 @@ end
 
 def plot_map_test
   scan = Scan.new 'testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', 'test_plot', [45, 45, 3]
-  scan.load
+  scan.load({'spectral_unit' => 'eV'})
   #scan.plot_map {|spect| spect.signal_range[1]}
-  scan.plot_map {|spect| spect.from_to(300, 400)}
+  puts scan[0][0][0].spectral_range
+  scan.plot_map {|spect| spect.from_to(14000, 15000)}
 end
 
 def structurally_read_spe

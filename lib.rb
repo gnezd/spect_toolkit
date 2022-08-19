@@ -107,10 +107,11 @@ class Scan < Array
   def load_spe(options)
     # File read
     puts "loading spe #{@path} with options #{options}"
-    fin = File.open @path
+    fin = File.open @path, 'rb'
     rawsize = fin.size
     raw = fin.read(rawsize).freeze
     fin.close
+    
     xml_index = raw[678..685].unpack1('Q')
     xml_raw = raw[xml_index..-1]
     binary_data = raw[0x1004..xml_index-1]
@@ -118,18 +119,27 @@ class Scan < Array
     xml = Nokogiri.XML(xml_raw).remove_namespaces!
     #puts "xml_raw.size: #{xml_raw.size}"
     
-    # ROI on CCD determines starting wavelength
-    x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
-
     @framesize = xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
     @frames = xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
-    wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
-    @wv = wavelengths_nm.map {|nm| 10000000.0 / nm} # wavanumber
-
     raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{width} * #{height} * #{depth} * #{@framesize}." unless unpacked_counts.size == @width * @height * @depth* @framesize
 
+    # ROI on CCD determines starting wavelength
+    x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+    wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
+
+
     # Set unit and name
-    @spectrum_units = ['wavenumber', 'counts']
+    case options['spectral_unit']
+    when 'wavenumber'
+      @wv = wavelengths_nm.map {|nm| 10000000.0 / nm} # wavanumber
+      @spectrum_units = ['wavenumber', 'counts']
+    when 'eV'
+      @wv = wavelengths_nm.map {|nm| 1239.84197 / nm} # wavanumber
+      @spectrum_units = ['eV', 'counts']
+    else
+      @wv = wavelengths_nm # nm
+      @spectrum_units = ['nm', 'counts']
+    end
 
     # Spectrum building
     (0..@width-1).each do |i|
@@ -607,7 +617,7 @@ end
 
 class Spe < Array
   attr_accessor :frames, :wv, :spectrum_units, :path, :name, :xml, :frame_width, :frame_height
-  def initialize(path, name)
+  def initialize(path, name, options={})
     @path = path
     @name = name
     @spectrum_units = 'nm'
