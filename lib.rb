@@ -1,13 +1,4 @@
 # Script for the processing of micro-PL scann data
-# Objective: iterate through lines, assign some sort of sum(s) to frame and output as:
-# frame# sum1 sum2 ...
-
-# Todo: classes raw, spect, and....?
-# Sum up frame and create pixel value. scan should be array fornow
-# format: [path, scan_name, width, height]
-# Todo: accecpt code block for summing. Tricky: injection to whole loop
-# In general, mode extraction can be representated as a matrix acting on a spectrum but this requires spectrum spectrum constructing and lacks the freedom of passing blocks and conditions
-# An even more general way of doing things is to pass into sum_up() a list of criteria on the wavelengths
 
 # No longer needed as long you export NMATRX=1
 # require 'nmatrix'
@@ -616,20 +607,23 @@ class Alignment
 end
 
 class Spe < Array
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :xml, :frame_width, :frame_height
+  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units
+  
   def initialize(path, name, options={})
+    debug = options[:debug]
     @path = path
     @name = name
-    @spectrum_units = 'nm'
-    raise "No such file #{path}" unless File.exist? path
+    raise "No such file #{@path}" unless File.exist? path
+    
+    puts "Loading spe file #{@path} at #{Time.now}" if debug
     fin = File.open @path, 'rb'
     raw = fin.read(fin.size).freeze
     fin.close
     # Starting position of xml part
     xml_index = raw[678..685].unpack1('Q')
     xml_raw = raw[xml_index..-1]
-    binary_data = raw[0x1004..xml_index-1]
-    unpacked_counts = binary_data.unpack('S*')
+    binary_data = raw[0x1004..xml_index-1].freeze
+    unpacked_counts = binary_data.unpack('S*').freeze
     @xml = Nokogiri.XML(xml_raw).remove_namespaces!
     @frames = @xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
     x0 = @xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
@@ -643,16 +637,17 @@ class Spe < Array
     @frame_width = @area_width / @xbinning
     @frame_height = @area_height / @ybinning
     @framesize = @frame_width * @frame_height
-    
     raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+
     wavelengths_nm = @xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
     @wv = wavelengths_nm
+    @spectrum_units = 'nm'
 
     # Simple: a line of spectrum per frame
     if @frame_height == 1
       super Array.new(@frames) {Spectrum.new()}
       (0..@frames - 1).each do |i|
-        unpacked_counts[i * @framesize .. (i + 1) * @framesize - 1].each_with_index do |value, sp_index|
+        unpacked_counts[(i * @framesize) .. ((i + 1) * @framesize - 1)].each_with_index do |value, sp_index|
           self[i].push [@wv[sp_index], value]
           self[i].name = "#{@name}-#{i}"
           self[i].spectral_range = [@wv[0], @wv[-1]]
@@ -660,6 +655,7 @@ class Spe < Array
         end
       end
     else
+      # Frame contains image
       puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}"
       super Array.new(@frames) {Array.new(@frame_width) {Array.new(@frame_height) {0}}}
       (0..@frames - 1).each do |frame|
@@ -670,11 +666,16 @@ class Spe < Array
         end
       end
     end
+  end
+  
+  def each_frame
 
   end
+end
 
+class ADPL
   # Plotting ADPL data, with given density of scan per degree
-  def plot_adpl(scans_per_deg = 1)
+  def plot(scans_per_deg = 1)
     data_export = Array.new(self.size) {Array.new(self[0].size) {0}}
     self.each_with_index do |spectrum, i|
       spectrum.each_with_index do |pt, j|

@@ -616,4 +616,14 @@ def structurally_read_spe
   puts spe[-2][0..5]
 end
 
-plot_map_test
+def read_image_spe_test
+  puts Time.now
+  spe = Spe.new './testdata/10000ms_dark 17_31_49 microPL.spe', '10s'
+  img = spe[0]
+  puts "Load compl, writing tsv"
+  puts Time.now
+  matrix_write img.transpose, './img.tsv'
+  puts Time.now
+end
+
+read_image_spe_test
