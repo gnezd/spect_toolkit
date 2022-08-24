@@ -4,6 +4,7 @@
 # require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
+require 'time'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
@@ -607,7 +608,7 @@ class Alignment
 end
 
 class Spe < Array
-  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units
+  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
   
   def initialize(path, name, options={})
     debug = options[:debug]
@@ -625,7 +626,12 @@ class Spe < Array
     binary_data = raw[0x1004..xml_index-1].freeze
     unpacked_counts = binary_data.unpack('S*').freeze
     @xml = Nokogiri.XML(xml_raw).remove_namespaces!
+    
+    # Data format
     @frames = @xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
+    pixelformat = @xml.xpath('//DataFormat/DataBlock').attr('pixelFormat').value
+    raise "Pixel format #{pixelformat} not supported" unless pixelformat == 'MonochromeUnsigned16'
+
     x0 = @xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
 
     @area_width = @xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
@@ -633,7 +639,7 @@ class Spe < Array
     @xbinning = @xml.xpath('//Calibrations/SensorMapping').attr('xBinning').value.to_i
     @ybinning = @xml.xpath('//Calibrations/SensorMapping').attr('yBinning').value.to_i
 
-    # puts "W: #{@area_width}/#{@xbinning} H: #{@area_height}/#{@ybinning}"
+    puts "W: #{@area_width}/#{@xbinning} H: #{@area_height}/#{@ybinning}" if debug
     @frame_width = @area_width / @xbinning
     @frame_height = @area_height / @ybinning
     @framesize = @frame_width * @frame_height
@@ -641,10 +647,33 @@ class Spe < Array
 
     wavelengths_nm = @xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
     @wv = wavelengths_nm
-    @spectrum_units = 'nm'
+    
+    # @data_creation, @file_creation, @file_modified
+    @data_creation = Time.parse(@xml.xpath('//DataHistories/DataHistory/Origin').attr('created').value)
+    @file_creation = Time.parse(@xml.xpath('//GeneralInformation/FileInformation').attr('created').value)
+    @file_modified= Time.parse(@xml.xpath('//GeneralInformation/FileInformation').attr('lastModified').value)
+    # @grating @center wavelength
+    @grating = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Spectrometers/Spectrometer/Grating/Selected').text
+    @center_wavelength = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Spectrometers/Spectrometer/Grating/CenterWavelength').text
+    # @exposure_time
+    @exposure_time = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Cameras/Camera/ShutterTiming/ExposureTime').text.to_f
+
+    # Set unit and name
+    case options[:spectral_unit]
+    when 'wavenumber'
+      @wv = wavelengths_nm.map {|nm| 10000000.0 / nm} # wavanumber
+      @spectrum_units = ['wavenumber', 'counts']
+    when 'eV'
+      @wv = wavelengths_nm.map {|nm| 1239.84197 / nm} # wavanumber
+      @spectrum_units = ['eV', 'counts']
+    else
+      @wv = wavelengths_nm # nm
+      @spectrum_units = ['nm', 'counts']
+    end
 
     # Simple: a line of spectrum per frame
     if @frame_height == 1
+      puts "A spectra containing spe" if debug
       super Array.new(@frames) {Spectrum.new()}
       (0..@frames - 1).each do |i|
         unpacked_counts[(i * @framesize) .. ((i + 1) * @framesize - 1)].each_with_index do |value, sp_index|
@@ -654,20 +683,23 @@ class Spe < Array
           self[i].units = @spectrum_units
         end
       end
+    
+    # Frame contains image
     else
-      # Frame contains image
-      puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}"
-      super Array.new(@frames) {Array.new(@frame_width) {Array.new(@frame_height) {0}}}
-      (0..@frames - 1).each do |frame|
-        (0..@frame_height - 1).each do |row|
-          (0..@frame_width - 1).each do |element|
-            self[frame][element][row] = unpacked_counts[frame * @framesize + row * @frame_height + element]
-          end
-        end
+      puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}" if debug
+      super Array.new(@frames) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
+      unpacked_counts.each_index do |i|
+        # Flattened 3rd-order nested loop for easier future parallelization
+        self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
       end
     end
   end
   
+  def inspect
+  #attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
+    ["Spe name: #{@name}", "path: #{@path}", "Contining #{@frames} frames of dimension #{frame_width} x #{frame_height}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
+  end
+
   def each_frame
 
   end
