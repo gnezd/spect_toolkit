@@ -698,24 +698,26 @@ class Spe < Array
       end
 
       dist = []
-      count_per_dist = unpacked_counts.size / parallelize
+      # count_per_dist = (unpacked_counts.size.to_f / parallelize).ceil
+
+      frames_per_dist = (@frames.to_f / parallelize).ceil
       (0..parallelize-1).each do |process|
-        till = (process + 1) * count_per_dist - 1
-        till = unpacked_counts.size -1 unless till < unpacked_counts.size
-        dist.push(process * count_per_dist .. till)
+        till = (process + 1) * frames_per_dist - 1
+        till = @frames - 1 unless till < @frames
+        dist.push(process * frames_per_dist .. till)
       end
       puts "Load distribution: #{dist} under #{parallelize} processes."
 
       results = Parallel.map(dist, in_processes: parallelize) do |range|
-        range.each do |i|
-          self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
+
+        result = Array.new(range.size) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
+        (range.begin * @framesize .. (range.end + 1) * @framesize - 1).each do |i|
+          result[i / @framesize - range.begin][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
         end
+
+        self[range] = result
       end
 
-      #unpacked_counts.each_index do |i|
-        # Flattened 3rd-order nested loop for easier future parallelization
-      #  self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
-      #end
       puts "Loading complete at #{Time.now}" if debug
     end
   end
