@@ -1,4 +1,5 @@
-require './lib'
+require './lib.rb'
+require 'benchmark'
 
 def loading_test()
   require 'benchmark'
@@ -616,18 +617,14 @@ def structurally_read_spe
 end
 
 def read_image_spe_test
-  puts Time.now
-  spe = Spe.new './testdata/10000ms_dark 17_31_49 microPL.spe', '10s', {:debug => true, :spectral_unit => 'eV'}
-  puts "Load compl, writing tsv"
-  puts Time.now
-  puts '-' * 10
-  #img = spe[0]
-  #matrix_write img.transpose, './img.tsv'
-  #puts Time.now
-  #xmlout = File.open '10s_dark.xml', 'w'
-  #xmlout.puts spe.xml
-  #xmlout.close
-  puts spe.inspect
+  results = []
+  (1..8).each do |parallelize|
+    result = Benchmark.measure do 
+      spe = Spe.new './testdata/10000ms_dark 17_31_49 microPL.spe', '10s', {:spectral_unit => 'eV', :parallelize => parallelize}
+    end
+    results.push result
+  end
+  puts results
 end
 
 read_image_spe_test

@@ -5,6 +5,7 @@
 require 'gsl'
 require 'nokogiri'
 require 'time'
+require 'parallel'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
@@ -620,6 +621,7 @@ class Spe < Array
     fin = File.open @path, 'rb'
     raw = fin.read(fin.size).freeze
     fin.close
+    puts "Finished reading spe at #{Time.now}" if debug
     # Starting position of xml part
     xml_index = raw[678..685].unpack1('Q')
     xml_raw = raw[xml_index..-1]
@@ -686,12 +688,35 @@ class Spe < Array
     
     # Frame contains image
     else
-      puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}" if debug
+      puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}. Loading" if debug
       super Array.new(@frames) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
-      unpacked_counts.each_index do |i|
-        # Flattened 3rd-order nested loop for easier future parallelization
-        self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
+
+      if options[:parallelize]
+        parallelize = options[:parallelize]
+      else
+        parallelize = 1 # Processes
       end
+
+      dist = []
+      count_per_dist = unpacked_counts.size / parallelize
+      (0..parallelize-1).each do |process|
+        till = (process + 1) * count_per_dist - 1
+        till = unpacked_counts.size -1 unless till < unpacked_counts.size
+        dist.push(process * count_per_dist .. till)
+      end
+      puts "Load distribution: #{dist} under #{parallelize} processes."
+
+      results = Parallel.map(dist, in_processes: parallelize) do |range|
+        range.each do |i|
+          self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
+        end
+      end
+
+      #unpacked_counts.each_index do |i|
+        # Flattened 3rd-order nested loop for easier future parallelization
+      #  self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
+      #end
+      puts "Loading complete at #{Time.now}" if debug
     end
   end
   
