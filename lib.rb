@@ -673,6 +673,17 @@ class Spe < Array
       @spectrum_units = ['nm', 'counts']
     end
 
+    # Paralellization: distribution of frames to process among processes
+    dist = []
+    frames_per_dist = (@frames.to_f / parallelize).ceil
+    (0..parallelize-1).each do |process|
+      till = (process + 1) * frames_per_dist - 1
+      till = @frames - 1 unless till < @frames
+      break if dist.last.end == till
+      dist.push(process * frames_per_dist .. till)
+    end
+    puts "Load distribution: #{dist} under #{parallelize} processes." if debug
+
     # Simple: a line of spectrum per frame
     if @frame_height == 1
       puts "A spectra containing spe" if debug
@@ -697,25 +708,11 @@ class Spe < Array
         parallelize = 1 # Processes
       end
 
-      dist = []
-      # count_per_dist = (unpacked_counts.size.to_f / parallelize).ceil
 
-      frames_per_dist = (@frames.to_f / parallelize).ceil
-      (0..parallelize-1).each do |process|
-        till = (process + 1) * frames_per_dist - 1
-        till = @frames - 1 unless till < @frames
-        dist.push(process * frames_per_dist .. till)
-      end
-      puts "Load distribution: #{dist} under #{parallelize} processes."
-
-      results = Parallel.map(dist, in_processes: parallelize) do |range|
-
-        result = Array.new(range.size) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
+      Parallel.map(dist, in_processes: parallelize) do |range|
         (range.begin * @framesize .. (range.end + 1) * @framesize - 1).each do |i|
-          result[i / @framesize - range.begin][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
+          self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
         end
-
-        self[range] = result
       end
 
       puts "Loading complete at #{Time.now}" if debug
