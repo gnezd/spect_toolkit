@@ -1,5 +1,5 @@
-require './lib'
-require 'gsl'
+require './lib.rb'
+require 'benchmark'
 
 def loading_test()
   require 'benchmark'
@@ -603,10 +603,13 @@ end
 
 def plot_map_test
   scan = Scan.new 'testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', 'test_plot', [45, 45, 3]
-  scan.load({'spectral_unit' => 'eV'})
+  puts Time.now
+  scan.load({spectral_unit: 'nm'})
+  puts Time.now
   #scan.plot_map {|spect| spect.signal_range[1]}
   puts scan[0][0][0].spectral_range
-  scan.plot_map {|spect| spect.from_to(14000, 15000)}
+  scan.plot_map {|spect| (spect.ma(5).max_by{|pt| pt[1]})[0]}
+  puts Time.now
 end
 
 def structurally_read_spe
@@ -614,6 +617,29 @@ def structurally_read_spe
   puts spe.last[0..5]
   puts "====="
   puts spe[-2][0..5]
+end
+
+def read_image_spe_test
+  results = []
+  (1..8).each do |parallelize|
+    result = Benchmark.measure do 
+      spe = Spe.new './testdata/10000ms_dark 17_31_49 microPL.spe', '10s', {:spectral_unit => 'eV', :parallelize => parallelize}
+    end
+    results.push result
+  end
+  puts results
+end
+
+def read_spectra_spe_test
+  results = []
+  [1, 2, 4, 8].each do |parallelize|
+    result = Benchmark.measure do
+      spe = Spe.new './testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', '45-45-3', {spectral_unit: 'eV', parallelize: parallelize}
+      puts spe.inspect
+    end
+    results.push result
+  end
+  puts results
 end
 
 plot_map_test

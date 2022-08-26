@@ -1,18 +1,11 @@
 # Script for the processing of micro-PL scann data
-# Objective: iterate through lines, assign some sort of sum(s) to frame and output as:
-# frame# sum1 sum2 ...
-
-# Todo: classes raw, spect, and....?
-# Sum up frame and create pixel value. scan should be array fornow
-# format: [path, scan_name, width, height]
-# Todo: accecpt code block for summing. Tricky: injection to whole loop
-# In general, mode extraction can be representated as a matrix acting on a spectrum but this requires spectrum spectrum constructing and lacks the freedom of passing blocks and conditions
-# An even more general way of doing things is to pass into sum_up() a list of criteria on the wavelengths
 
 # No longer needed as long you export NMATRX=1
 # require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
+require 'time'
+require 'parallel'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
@@ -22,7 +15,7 @@ class Scan < Array
     @name = name
     @width = dim[0]
     @height = dim[1]
-    @depth = dim[2]
+      @depth = dim[2]
     @loaded = false
     @spectral_width = 0
     super Array.new(width) {Array.new(height) {Array.new(depth) {Spectrum.new()}}}
@@ -107,40 +100,7 @@ class Scan < Array
   def load_spe(options)
     # File read
     puts "loading spe #{@path} with options #{options}"
-    fin = File.open @path, 'rb'
-    rawsize = fin.size
-    raw = fin.read(rawsize).freeze
-    fin.close
-    
-    xml_index = raw[678..685].unpack1('Q')
-    xml_raw = raw[xml_index..-1]
-    binary_data = raw[0x1004..xml_index-1]
-    unpacked_counts = binary_data.unpack('S*')
-    xml = Nokogiri.XML(xml_raw).remove_namespaces!
-    #puts "xml_raw.size: #{xml_raw.size}"
-    
-    @framesize = xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
-    @frames = xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
-    raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{width} * #{height} * #{depth} * #{@framesize}." unless unpacked_counts.size == @width * @height * @depth* @framesize
-
-    # ROI on CCD determines starting wavelength
-    x0 = xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
-    wavelengths_nm = xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
-
-
-    # Set unit and name
-    case options['spectral_unit']
-    when 'wavenumber'
-      @wv = wavelengths_nm.map {|nm| 10000000.0 / nm} # wavanumber
-      @spectrum_units = ['wavenumber', 'counts']
-    when 'eV'
-      @wv = wavelengths_nm.map {|nm| 1239.84197 / nm} # wavanumber
-      @spectrum_units = ['eV', 'counts']
-    else
-      @wv = wavelengths_nm # nm
-      @spectrum_units = ['nm', 'counts']
-    end
-
+    @spe = Spe.new @path, @name, options
     # Spectrum building
     (0..@width-1).each do |i|
       (0..@height-1).each do |j|
@@ -151,20 +111,10 @@ class Scan < Array
           relabel_i = i
         end
         (0..depth-1).each do |k|
-          frame_st = (k * (@width * @height) + j * @width + i) * @framesize
-          unpacked_counts[frame_st .. frame_st + @framesize - 1].each_with_index do |value, sp_index|
-            self[relabel_i][j][k].push [@wv[sp_index], value]
-          end
-        end
-      end
-    end
-    # Update spectra info
-    puts "Finished loading #{@name}, updating spectra info."
-    (0..@width-1).each do |i|
-      (0..@height-1).each do |j|
-        (0..@depth-1).each do |k| 
-          self[i][j][k].update_info
-          #self.spectrum_units = @spectrum_units
+          #frame_st = (k * (@width * @height) + j * @width + i) * @framesize
+          #spe[frame_st .. frame_st + @framesize - 1].each_with_index do |value, sp_index|
+          self[relabel_i][j][k] = @spe[k * (@width * @height) + j * @width + i]
+          #end
         end
       end
     end
@@ -616,22 +566,31 @@ class Alignment
 end
 
 class Spe < Array
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :xml, :frame_width, :frame_height
+  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
+  
   def initialize(path, name, options={})
+    debug = options[:debug]
     @path = path
     @name = name
-    @spectrum_units = 'nm'
-    raise "No such file #{path}" unless File.exist? path
+    raise "No such file #{@path}" unless File.exist? path
+    
+    puts "Loading spe file #{@path} at #{Time.now}" if debug
     fin = File.open @path, 'rb'
     raw = fin.read(fin.size).freeze
     fin.close
+    puts "Finished reading spe at #{Time.now}" if debug
     # Starting position of xml part
     xml_index = raw[678..685].unpack1('Q')
     xml_raw = raw[xml_index..-1]
-    binary_data = raw[0x1004..xml_index-1]
-    unpacked_counts = binary_data.unpack('S*')
+    binary_data = raw[0x1004..xml_index-1].freeze
+    unpacked_counts = binary_data.unpack('S*').freeze
     @xml = Nokogiri.XML(xml_raw).remove_namespaces!
+    
+    # Data format
     @frames = @xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
+    pixelformat = @xml.xpath('//DataFormat/DataBlock').attr('pixelFormat').value
+    raise "Pixel format #{pixelformat} not supported" unless pixelformat == 'MonochromeUnsigned16'
+
     x0 = @xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
 
     @area_width = @xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
@@ -639,42 +598,96 @@ class Spe < Array
     @xbinning = @xml.xpath('//Calibrations/SensorMapping').attr('xBinning').value.to_i
     @ybinning = @xml.xpath('//Calibrations/SensorMapping').attr('yBinning').value.to_i
 
-    # puts "W: #{@area_width}/#{@xbinning} H: #{@area_height}/#{@ybinning}"
+    puts "W: #{@area_width}/#{@xbinning} H: #{@area_height}/#{@ybinning}" if debug
     @frame_width = @area_width / @xbinning
     @frame_height = @area_height / @ybinning
     @framesize = @frame_width * @frame_height
-    
     raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+
     wavelengths_nm = @xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
     @wv = wavelengths_nm
+    
+    # @data_creation, @file_creation, @file_modified
+    @data_creation = Time.parse(@xml.xpath('//DataHistories/DataHistory/Origin').attr('created').value)
+    @file_creation = Time.parse(@xml.xpath('//GeneralInformation/FileInformation').attr('created').value)
+    @file_modified= Time.parse(@xml.xpath('//GeneralInformation/FileInformation').attr('lastModified').value)
+    # @grating @center wavelength
+    @grating = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Spectrometers/Spectrometer/Grating/Selected').text
+    @center_wavelength = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Spectrometers/Spectrometer/Grating/CenterWavelength').text
+    # @exposure_time
+    @exposure_time = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Cameras/Camera/ShutterTiming/ExposureTime').text.to_f
+
+    # Set unit and name
+    case options[:spectral_unit]
+    when 'wavenumber'
+      @wv = wavelengths_nm.map {|nm| 10000000.0 / nm} # wavanumber
+      @spectrum_units = ['wavenumber', 'counts']
+    when 'eV'
+      @wv = wavelengths_nm.map {|nm| 1239.84197 / nm} # wavanumber
+      @spectrum_units = ['eV', 'counts']
+    else
+      @wv = wavelengths_nm # nm
+      @spectrum_units = ['nm', 'counts']
+    end
+
+    # Paralellization: distribution of frames to process among processes
+    if options[:parallelize]
+      parallelize = options[:parallelize]
+    else
+      parallelize = 1 # Processes
+    end
+    dist = []
+    frames_per_dist = (@frames.to_f / parallelize).ceil
+    (0..parallelize-1).each do |process|
+      till = (process + 1) * frames_per_dist - 1
+      till = @frames - 1 unless till < @frames
+      break if dist.last&.end == till
+      dist.push(process * frames_per_dist .. till)
+    end
+    puts "Load distribution: #{dist} under #{parallelize} processes." if debug
 
     # Simple: a line of spectrum per frame
     if @frame_height == 1
+      puts "A spectra containing spe" if debug
       super Array.new(@frames) {Spectrum.new()}
       (0..@frames - 1).each do |i|
-        unpacked_counts[i * @framesize .. (i + 1) * @framesize - 1].each_with_index do |value, sp_index|
-          self[i].push [@wv[sp_index], value]
+        #unpacked_counts[(i * @framesize) .. ((i + 1) * @framesize - 1)].each_with_index do |value, sp_index|
+          #self[i]
+          self[i][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
           self[i].name = "#{@name}-#{i}"
           self[i].spectral_range = [@wv[0], @wv[-1]]
           self[i].units = @spectrum_units
-        end
       end
+    
+    # Frame contains image
     else
-      puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}"
-      super Array.new(@frames) {Array.new(@frame_width) {Array.new(@frame_height) {0}}}
-      (0..@frames - 1).each do |frame|
-        (0..@frame_height - 1).each do |row|
-          (0..@frame_width - 1).each do |element|
-            self[frame][element][row] = unpacked_counts[frame * @framesize + row * @frame_height + element]
-          end
+      puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}. Loading" if debug
+      super Array.new(@frames) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
+
+
+      Parallel.map(dist, in_processes: parallelize) do |range|
+        (range.begin * @framesize .. (range.end + 1) * @framesize - 1).each do |i|
+          self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
         end
       end
-    end
 
+      puts "Loading complete at #{Time.now}" if debug
+    end
+  end
+  
+  def inspect
+  #attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
+    ["Spe name: #{@name}", "path: #{@path}", "Contining #{@frames} frames of dimension #{frame_width} x #{frame_height}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
   end
 
+  def each_frame
+
+  end
+end
+
+class ADPL
   # Plotting ADPL data, with given density of scan per degree
-  def plot_adpl(scans_per_deg = 1)
+  def plot(scans_per_deg = 1)
     data_export = Array.new(self.size) {Array.new(self[0].size) {0}}
     self.each_with_index do |spectrum, i|
       spectrum.each_with_index do |pt, j|
