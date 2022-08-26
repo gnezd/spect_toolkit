@@ -686,15 +686,24 @@ class Spe < Array
 end
 
 class ADPL
+  def initialize(path, name, options = {})
+    @path = path
+    @name = name
+    options[:spectrum_unit] = 'nm' # Force to use nm for now
+    @spe = Spe.new path, name, options
+    @scans_per_deg = 1
+    @scans_per_deg = options[:scans_per_deg] if options[:scans_per_deg]
+  end
+
   # Plotting ADPL data, with given density of scan per degree
-  def plot(scans_per_deg = 1)
-    data_export = Array.new(self.size) {Array.new(self[0].size) {0}}
-    self.each_with_index do |spectrum, i|
+  def plot(output_path)
+    data_export = Array.new(@spe.size) {Array.new(@spe[0].size) {0}}
+    @spe.each_with_index do |spectrum, i|
       spectrum.each_with_index do |pt, j|
         data_export[i][j] = pt[1]
       end
     end
-    tsv_name = @name + ".tsv"
+    tsv_name = output_path + @name + ".tsv"
     matrix_write data_export, tsv_name
 
 gnuplot_content =<<GPLOTCONTENT
@@ -705,18 +714,18 @@ unset key
 set pm3d map
 set pm3d interpolate 0,0
 
-set output '#{@name}.png'
-set title '#{@name}'
+set output '#{output_path + @name}.png'
+set title '#{@name.gsub('_', '\_')}'
 
 set xrange [400:750]
 
-splot '#{@name}.tsv' matrix u ($1*0.30623 + 364.8464):($2/#{scans_per_deg}-90):3
+splot '#{output_path + @name}.tsv' matrix u ($1*0.30623 + 364.8464):($2/#{@scans_per_deg}-90):3
 GPLOTCONTENT
 
-    gnuplot_fout = File.open "#{@name}.gplot", 'w'
+    gnuplot_fout = File.open "#{output_path + @name}.gplot", 'w'
     gnuplot_fout.puts gnuplot_content
     gnuplot_fout.close
-    `gnuplot #{@name}.gplot`
+    `gnuplot #{output_path + @name}.gplot`
   end
 end
 

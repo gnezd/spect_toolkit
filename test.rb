@@ -642,4 +642,9 @@ def read_spectra_spe_test
   puts results
 end
 
-plot_map_test
+def adpl_test
+  adpl1 = ADPL.new('testdata/ADPL_11Aug_setup-AlQ3_test 16_40_11 microPL.spe', 'AlQ3test_11Aug', {scans_per_deg: 2})
+  adpl1.plot('./output/')
+end
+
+adpl_test
