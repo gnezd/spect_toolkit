@@ -620,6 +620,7 @@ def structurally_read_spe
 end
 
 def read_image_spe_test
+  puts "Benchmarking paralellization performance of reading 10s dark count spe."
   results = []
   (1..8).each do |parallelize|
     result = Benchmark.measure do 
@@ -634,7 +635,8 @@ def read_spectra_spe_test
   results = []
   [1, 2, 4, 8].each do |parallelize|
     result = Benchmark.measure do
-      spe = Spe.new './testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', '45-45-3', {spectral_unit: 'eV', parallelize: parallelize}
+      #spe = Spe.new './testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', '45-45-3', {spectral_unit: 'eV', parallelize: parallelize}
+      spe = Spe.new './testdata/spe.spe', '2566-3', {spectral_unit: 'eV', parallelize: parallelize}
       puts spe.inspect
     end
     results.push result
@@ -668,4 +670,5 @@ def chunck_read_vs_slurp_read
   end
 end
 
-chunck_read_vs_slurp_read
+#read_image_spe_test
+read_spectra_spe_test

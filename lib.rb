@@ -650,13 +650,14 @@ class Spe < Array
     if @frame_height == 1
       puts "A spectra containing spe" if debug
       super Array.new(@frames) {Spectrum.new()}
-      (0..@frames - 1).each do |i|
-        #unpacked_counts[(i * @framesize) .. ((i + 1) * @framesize - 1)].each_with_index do |value, sp_index|
-          #self[i]
+      Parallel.map(dist, in_processes: parallelize) do |range|
+      #(0..@frames - 1).each do |i|
+        range.each do |i|
           self[i][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
           self[i].name = "#{@name}-#{i}"
           self[i].spectral_range = [@wv[0], @wv[-1]]
           self[i].units = @spectrum_units
+        end
       end
     
     # Frame contains image
