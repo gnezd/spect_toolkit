@@ -647,4 +647,25 @@ def adpl_test
   adpl1.plot('./output/')
 end
 
-adpl_test
+def chunck_read_vs_slurp_read
+  large_file = './testdata/10000ms_dark 17_31_49 microPL.spe'
+  Benchmark.bm do |x|
+  x.report("slurp: ") do
+    fin = File.open large_file, 'rb'
+    raw = fin.read(fin.size).freeze
+    fin.close
+    unpacked = raw.unpack('S*').freeze
+  end
+
+  x.report("1M buff:") do
+    fin2 = File.open large_file, 'rb'
+    raw2 =[] 
+    while(chunk = fin2.read(1_000_000))
+      raw2.push chunk.unpack('S*')
+    end
+    fin2.close
+  end 
+  end
+end
+
+chunck_read_vs_slurp_read
