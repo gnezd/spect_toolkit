@@ -602,13 +602,15 @@ def excise_test
 end
 
 def plot_map_test
-  scan = Scan.new 'testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', 'test_plot', [45, 45, 3]
+  #scan = Scan.new 'testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', 'test_plot', [45, 45, 3]
+  scan = Scan.new 'testdata/spe.spe', 'big_test_plot', [200, 200, 1]
   puts Time.now
-  scan.load({spectral_unit: 'nm'})
+  scan.load({spectral_unit: 'nm', parallelize: 8})
   puts Time.now
   #scan.plot_map {|spect| spect.signal_range[1]}
+  puts scan[0][0][0].class
   puts scan[0][0][0].spectral_range
-  scan.plot_map {|spect| (spect.ma(5).max_by{|pt| pt[1]})[0]}
+  scan.plot_map {|spect| spect.sum}
   puts Time.now
 end
 
@@ -619,7 +621,7 @@ def structurally_read_spe
   puts spe[-2][0..5]
 end
 
-def read_image_spe_test
+def read_image_spe_benchmark
   puts "Benchmarking paralellization performance of reading 10s dark count spe."
   results = []
   (1..8).each do |parallelize|
@@ -627,13 +629,21 @@ def read_image_spe_test
       spe = Spe.new './testdata/10000ms_dark 17_31_49 microPL.spe', '10s', {:spectral_unit => 'eV', :parallelize => parallelize}
     end
     results.push result
+
   end
   puts results
 end
 
-def read_spectra_spe_test
+def read_image_spe_test
+  spe = Spe.new './testdata/10000ms_dark 17_31_49 microPL.spe', '10s', {:spectral_unit => 'eV', parallelize: 8}
+  puts spe.inspect
+  matrix_write spe[0], 'img.tsv'
+end
+
+def read_spectra_spe_benchmark
   results = []
-  [1, 2, 4, 8].each do |parallelize|
+  GC.disable
+  [1, 8].each do |parallelize|
     result = Benchmark.measure do
       #spe = Spe.new './testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', '45-45-3', {spectral_unit: 'eV', parallelize: parallelize}
       spe = Spe.new './testdata/spe.spe', '2566-3', {spectral_unit: 'eV', parallelize: parallelize}
@@ -670,5 +680,15 @@ def chunck_read_vs_slurp_read
   end
 end
 
+def read_spectra_spe_test
+  spe = Spe.new 'testdata/small.spe', 'smallspe', {parallelize:8, debug: true}
+  puts spe.inspect
+  puts spe[0].class
+  puts spe[0].size
+end
+
 #read_image_spe_test
-read_spectra_spe_test
+#read_image_spe_benchmark
+#read_spectra_spe_test
+#read_spectra_spe_benchmark
+plot_map_test
