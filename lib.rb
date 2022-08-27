@@ -650,26 +650,31 @@ class Spe < Array
     if @frame_height == 1
       puts "A spectra containing spe" if debug
       super Array.new(@frames) {Spectrum.new()}
-      (0..@frames - 1).each do |i|
-        #unpacked_counts[(i * @framesize) .. ((i + 1) * @framesize - 1)].each_with_index do |value, sp_index|
-          #self[i]
-          self[i][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
-          self[i].name = "#{@name}-#{i}"
-          self[i].spectral_range = [@wv[0], @wv[-1]]
-          self[i].units = @spectrum_units
+      results = Parallel.map(dist, in_processes: parallelize) do |range|
+        result = Array.new(range.size) {Spectrum.new()}
+      #(0..@frames - 1).each do |i|
+        puts range if debug
+        range.each do |i|
+          result[i-range.begin][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
+          result[i-range.begin].name = "#{@name}-#{i}"
+          result[i-range.begin].spectral_range = [@wv[0], @wv[-1]]
+          result[i-range.begin].units = @spectrum_units
+        end
+        result
       end
-    
+      dist.each_with_index {|range, i| self[range] = results[i]}
     # Frame contains image
     else
       puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}. Loading" if debug
-      super Array.new(@frames) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
-
-
-      Parallel.map(dist, in_processes: parallelize) do |range|
+      #super Array.new(@frames) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
+      results = Parallel.map(dist, in_processes: parallelize) do |range|
+        result = Array.new(range.size) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
         (range.begin * @framesize .. (range.end + 1) * @framesize - 1).each do |i|
-          self[i / @framesize][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
+          result[i / @framesize - range.begin][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
         end
+        result
       end
+      super results.reduce(:+)
 
       puts "Loading complete at #{Time.now}" if debug
     end
