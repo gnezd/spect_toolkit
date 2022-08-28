@@ -724,7 +724,7 @@ set title '#{@name.gsub('_', '\_')}'
 
 set xrange [400:750]
 
-splot '#{output_path + @name}.tsv' matrix u ($1*0.30623 + 364.8464):($2/#{@scans_per_deg}-90):3
+splot '#{output_path + @name}.tsv' matrix u ($1*0.30623 + 364.8464):(90-$2/#{@scans_per_deg}):3
 GPLOTCONTENT
 
     gnuplot_fout = File.open "#{output_path + @name}.gplot", 'w'
