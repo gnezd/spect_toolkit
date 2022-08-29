@@ -99,13 +99,16 @@ class Scan < Array
 
   def load_spe(options)
     # File read
-    puts "loading spe #{@path} with options #{options}"
+    debug = options[:debug]
+    puts "loading spe #{@path} with options #{options}."
+    puts "Reading spe at #{Time.now}" if debug
     @spe = Spe.new @path, @name, options
+    puts "Spe reading complete at #{Time.now}. Start scan building." if debug
     # Spectrum building
     (0..@width-1).each do |i|
       (0..@height-1).each do |j|
         if j % 2 == 1 && options[:s_scan] == true
-          puts "Loading with S-shape scan"
+          #puts "Loading with S-shape scan"
           relabel_i = @width - i - 1
         else
           relabel_i = i
@@ -118,6 +121,7 @@ class Scan < Array
         end
       end
     end
+    puts "Scan building complete at #{Time.now}." if debug
   end
 
   def extract_spect(points)
@@ -170,6 +174,30 @@ class Scan < Array
     outdir = @name unless outdir
     Dir.mkdir outdir unless Dir.exist? outdir
     map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
+    map = Array.new(@depth) {Array.new(@height) {Array.new(@width) {0.0}}}    
+
+    # Serialize before parallelization
+    i = 0
+    while i < @width * @height * @depth
+      x = i % @width
+      y = ((i - x) / @width) % @height
+      z = i / (@width * height)
+      map[z][y][x] = yield(self[x][y][z])
+    i += 1
+    end
+
+    z = 0
+    while z < @depth
+      row = 0
+      map_fout.puts "# z = #{z}"
+      while row < @height
+        map_fout.puts map[z][row].join "\t"
+        row += 1
+      end
+      map_fout.print "\n\n"
+      z += 1
+    end
+=begin
     # Iterate through z layers
     (0..@depth-1).each do |z|
       map = Array.new(@width) {Array.new(@height) {0.0}} # One slice
@@ -185,7 +213,7 @@ class Scan < Array
       end
       map_fout.print "\n\n"
     end
-
+=end
     # Export map and push
     map_fout.close
       # Plotting
