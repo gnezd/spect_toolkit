@@ -106,9 +106,8 @@ class Scan < Array
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
     # Spectrum building
     i = 0
-    j = 0
-    k = 0
     while i < @width
+      j = 0
       while j < @height
         if j % 2 == 1 && options[:s_scan] == true
           #puts "Loading with S-shape scan"
@@ -116,6 +115,7 @@ class Scan < Array
         else
           relabel_i = i
         end
+        k = 0
         while k < @depth
           #frame_st = (k * (@width * @height) + j * @width + i) * @framesize
           #spe[frame_st .. frame_st + @framesize - 1].each_with_index do |value, sp_index|
@@ -689,13 +689,14 @@ class Spe < Array
       #(0..@frames - 1).each do |i|
         puts "A process is taking care of #{range}" if debug
         i = range.begin
-        while i < range.end
+        while i <= range.end
           result[i-range.begin][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
           result[i-range.begin].name = "#{@name}-#{i}"
           result[i-range.begin].spectral_range = [@wv[0], @wv[-1]]
           result[i-range.begin].units = @spectrum_units
           i += 1
         end
+        puts "Done #{Time.now}"
         result
       end
       dist.each_with_index {|range, i| self[range] = results[i]}
@@ -710,10 +711,10 @@ class Spe < Array
         end
         result
       end
-      super results.reduce(:+)
 
       puts "Loading complete at #{Time.now}" if debug
     end
+    super results.reduce(:+)
   end
   
   def inspect
