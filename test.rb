@@ -604,14 +604,10 @@ end
 def plot_map_test
   #scan = Scan.new 'testdata/64-84.9-w15h15d5-45x45x3 2022-04-29 10_36_52 microPL.spe', 'test_plot', [45, 45, 3]
   scan = Scan.new 'testdata/spe.spe', 'big_test_plot', [200, 200, 1]
-  puts Time.now
-  scan.load({spectral_unit: 'nm', parallelize: 8})
-  puts Time.now
-  #scan.plot_map {|spect| spect.signal_range[1]}
-  puts scan[0][0][0].class
-  puts scan[0][0][0].spectral_range
+  scan.load({spectral_unit: 'nm', s_scan: true, parallelize: 8, debug: true})
+  #scan.load({spectral_unit: 'nm', s_scan: false, parallelize: 8, debug: true})
   scan.plot_map {|spect| spect.sum}
-  puts Time.now
+  puts "Finished plotting at #{Time.now}"
 end
 
 def structurally_read_spe
@@ -687,8 +683,13 @@ def read_spectra_spe_test
   puts spe[0].size
 end
 
+def plot_proc_test
+  
+end
+
 #read_image_spe_test
 #read_image_spe_benchmark
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
-plot_map_test
+#plot_map_test
+#adpl_test

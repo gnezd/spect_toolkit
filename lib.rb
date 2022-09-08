@@ -99,25 +99,35 @@ class Scan < Array
 
   def load_spe(options)
     # File read
-    puts "loading spe #{@path} with options #{options}"
+    debug = options[:debug]
+    puts "loading spe #{@path} with options #{options}."
+    puts "Reading spe at #{Time.now}" if debug
     @spe = Spe.new @path, @name, options
+    puts "Spe reading complete at #{Time.now}. Start scan building." if debug
     # Spectrum building
-    (0..@width-1).each do |i|
-      (0..@height-1).each do |j|
+    i = 0
+    while i < @width
+      j = 0
+      while j < @height
         if j % 2 == 1 && options[:s_scan] == true
-          puts "Loading with S-shape scan"
+          #puts "Loading with S-shape scan"
           relabel_i = @width - i - 1
         else
           relabel_i = i
         end
-        (0..depth-1).each do |k|
+        k = 0
+        while k < @depth
           #frame_st = (k * (@width * @height) + j * @width + i) * @framesize
           #spe[frame_st .. frame_st + @framesize - 1].each_with_index do |value, sp_index|
           self[relabel_i][j][k] = @spe[k * (@width * @height) + j * @width + i]
           #end
+          k += 1
         end
+        j += 1
       end
+      i += 1
     end
+    puts "Scan building complete at #{Time.now}." if debug
   end
 
   def extract_spect(points)
@@ -170,6 +180,30 @@ class Scan < Array
     outdir = @name unless outdir
     Dir.mkdir outdir unless Dir.exist? outdir
     map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
+    map = Array.new(@depth) {Array.new(@height) {Array.new(@width) {0.0}}}    
+
+    # Serialize before parallelization
+    i = 0
+    while i < @width * @height * @depth
+      x = i % @width
+      y = ((i - x) / @width) % @height
+      z = i / (@width * height)
+      map[z][y][x] = yield(self[x][y][z])
+    i += 1
+    end
+
+    z = 0
+    while z < @depth
+      row = 0
+      map_fout.puts "# z = #{z}"
+      while row < @height
+        map_fout.puts map[z][row].join "\t"
+        row += 1
+      end
+      map_fout.print "\n\n"
+      z += 1
+    end
+=begin
     # Iterate through z layers
     (0..@depth-1).each do |z|
       map = Array.new(@width) {Array.new(@height) {0.0}} # One slice
@@ -185,7 +219,7 @@ class Scan < Array
       end
       map_fout.print "\n\n"
     end
-
+=end
     # Export map and push
     map_fout.close
       # Plotting
@@ -513,6 +547,7 @@ class Spectrum < Array
   def fft 
     ft = GSL::Vector.alloc(self.map{|pt| pt[1]}).fft # 究極一行文
     ft = ft.to_complex2.abs # Be positive
+    ft
   end
 
   def from_to(from, to)
@@ -651,15 +686,19 @@ class Spe < Array
       puts "A spectra containing spe" if debug
       super Array.new(@frames) {Spectrum.new()}
       results = Parallel.map(dist, in_processes: parallelize) do |range|
+      #results = Parallel.map(dist, in_threads: parallelize) do |range|
         result = Array.new(range.size) {Spectrum.new()}
       #(0..@frames - 1).each do |i|
-        puts range if debug
-        range.each do |i|
+        puts "A process is taking care of #{range}" if debug
+        i = range.begin
+        while i <= range.end
           result[i-range.begin][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
           result[i-range.begin].name = "#{@name}-#{i}"
           result[i-range.begin].spectral_range = [@wv[0], @wv[-1]]
           result[i-range.begin].units = @spectrum_units
+          i += 1
         end
+        puts "Done #{Time.now}"
         result
       end
       dist.each_with_index {|range, i| self[range] = results[i]}
@@ -674,10 +713,10 @@ class Spe < Array
         end
         result
       end
-      super results.reduce(:+)
 
       puts "Loading complete at #{Time.now}" if debug
     end
+    super results.reduce(:+)
   end
   
   def inspect
@@ -724,7 +763,7 @@ set title '#{@name.gsub('_', '\_')}'
 
 set xrange [400:750]
 
-splot '#{output_path + @name}.tsv' matrix u ($1*0.30623 + 364.8464):($2/#{@scans_per_deg}-90):3
+splot '#{output_path + @name}.tsv' matrix u ($1*0.30623 + 364.8464):(90-$2/#{@scans_per_deg}):3
 GPLOTCONTENT
 
     gnuplot_fout = File.open "#{output_path + @name}.gplot", 'w'
@@ -741,11 +780,12 @@ def plot_spectra(spectra, options = {})
   x_units = spectra.map {|spectrum| spectrum.units[0]}
   raise "Some spectra have different units!" unless x_units.all? {|unit| unit == x_units[0]}
 
-  if options['outdir']
-    plotdir = options['outdir']
+  if options[:outdir]
+    plotdir = options[:outdir]
   else
     plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
+  puts plotdir
   Dir.mkdir plotdir unless Dir.exist? plotdir
 
   plots = []
