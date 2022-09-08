@@ -683,8 +683,11 @@ def read_spectra_spe_test
   puts spe[0].size
 end
 
-def plot_proc_test
-  
+def multi_roi_spe_test
+  spe = Spe.new '/mnt/h/Dropbox/RCAS/Workspace/Q3/08Sep/polarization_LCD 13_55_22 microPL.spe', 'polar_cube', {debug: true}
+  blocks = spe.xml.xpath('//DataFormat/DataBlock/*')
+  puts blocks.size
+  puts blocks.class
 end
 
 #read_image_spe_test
@@ -693,3 +696,4 @@ end
 #read_spectra_spe_benchmark
 #plot_map_test
 #adpl_test
+multi_roi_spe_test

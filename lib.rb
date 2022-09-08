@@ -601,7 +601,7 @@ class Alignment
 end
 
 class Spe < Array
-  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
+  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :rois
   
   def initialize(path, name, options={})
     debug = options[:debug]
@@ -618,7 +618,8 @@ class Spe < Array
     xml_index = raw[678..685].unpack1('Q')
     xml_raw = raw[xml_index..-1]
     binary_data = raw[0x1004..xml_index-1].freeze
-    unpacked_counts = binary_data.unpack('S*').freeze
+    unpacked_counts = binary_data.unpack('S*')
+    puts "Unpacked binary has a lenght of: #{unpacked_counts.size}" if debug
     @xml = Nokogiri.XML(xml_raw).remove_namespaces!
     
     # Data format
@@ -637,7 +638,7 @@ class Spe < Array
     @frame_width = @area_width / @xbinning
     @frame_height = @area_height / @ybinning
     @framesize = @frame_width * @frame_height
-    raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+    #raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
 
     wavelengths_nm = @xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
     @wv = wavelengths_nm
