@@ -547,6 +547,7 @@ class Spectrum < Array
   def fft 
     ft = GSL::Vector.alloc(self.map{|pt| pt[1]}).fft # 究極一行文
     ft = ft.to_complex2.abs # Be positive
+    ft
   end
 
   def from_to(from, to)
@@ -685,6 +686,7 @@ class Spe < Array
       puts "A spectra containing spe" if debug
       super Array.new(@frames) {Spectrum.new()}
       results = Parallel.map(dist, in_processes: parallelize) do |range|
+      #results = Parallel.map(dist, in_threads: parallelize) do |range|
         result = Array.new(range.size) {Spectrum.new()}
       #(0..@frames - 1).each do |i|
         puts "A process is taking care of #{range}" if debug
@@ -778,11 +780,12 @@ def plot_spectra(spectra, options = {})
   x_units = spectra.map {|spectrum| spectrum.units[0]}
   raise "Some spectra have different units!" unless x_units.all? {|unit| unit == x_units[0]}
 
-  if options['outdir']
-    plotdir = options['outdir']
+  if options[:outdir]
+    plotdir = options[:outdir]
   else
     plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
+  puts plotdir
   Dir.mkdir plotdir unless Dir.exist? plotdir
 
   plots = []

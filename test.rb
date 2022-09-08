@@ -683,9 +683,13 @@ def read_spectra_spe_test
   puts spe[0].size
 end
 
+def plot_proc_test
+  
+end
+
 #read_image_spe_test
 #read_image_spe_benchmark
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
-plot_map_test
+#plot_map_test
 #adpl_test
