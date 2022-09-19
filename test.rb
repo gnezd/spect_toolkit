@@ -686,8 +686,8 @@ end
 def multi_roi_spe_test
   spe = Spe.new '/mnt/h/Dropbox/RCAS/Workspace/Q3/08Sep/polarization_LCD 13_55_22 microPL.spe', 'polar_cube', {debug: true}
   blocks = spe.xml.xpath('//DataFormat/DataBlock/*')
-  puts blocks.size
-  puts blocks.class
+  puts blocks
+  puts spe.rois
 end
 
 #read_image_spe_test

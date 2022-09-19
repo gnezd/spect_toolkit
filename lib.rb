@@ -620,28 +620,48 @@ class Spe < Array
     binary_data = raw[0x1004..xml_index-1].freeze
     unpacked_counts = binary_data.unpack('S*')
     puts "Unpacked binary has a lenght of: #{unpacked_counts.size}" if debug
-    @xml = Nokogiri.XML(xml_raw).remove_namespaces!
+
+    @xml = Nokogiri.XML(xml_raw)
     
     # Data format
-    @frames = @xml.xpath('//DataFormat/DataBlock').attr('count').value.to_i
-    pixelformat = @xml.xpath('//DataFormat/DataBlock').attr('pixelFormat').value
+    frame_node = @xml.at_xpath('//xmlns:DataBlock[@type="Frame"]')
+    @frames = frame_node.attr('count').to_i
+    pixelformat = frame_node.attr('pixelFormat')
     raise "Pixel format #{pixelformat} not supported" unless pixelformat == 'MonochromeUnsigned16'
 
-    x0 = @xml.xpath('//Calibrations/SensorMapping').attr('x').value.to_i
+    @rois = []
+    @xml.xpath('//xmlns:SensorMapping').each do |roi|
+      @rois.push({
+        :id => roi.attr('id').to_i,
+        :x => roi.attr('x').to_i,
+        :y => roi.attr('y').to_i,
+        :width => roi.attr('width').to_i,
+        :height => roi.attr('height').to_i,
+        :xbinning => roi.attr('xBinning').to_i,
+        :ybinning => roi.attr('yBinning').to_i
+      })
+    end
+    puts "ROIs:\n" + @rois.join("\n") if debug
 
-    @area_width = @xml.xpath('//Calibrations/SensorMapping').attr('width').value.to_i
-    @area_height = @xml.xpath('//Calibrations/SensorMapping').attr('height').value.to_i
-    @xbinning = @xml.xpath('//Calibrations/SensorMapping').attr('xBinning').value.to_i
-    @ybinning = @xml.xpath('//Calibrations/SensorMapping').attr('yBinning').value.to_i
+    # Cross check ROIs and sensor map
+    data_blocks = @xml.xpath('//xmlns:DataBlock[@type="Region"]')
+    raise "Mismatch of number of blocks and number of sensor mapping information" unless data_blocks.size == @rois.size
 
-    puts "W: #{@area_width}/#{@xbinning} H: #{@area_height}/#{@ybinning}" if debug
-    @frame_width = @area_width / @xbinning
-    @frame_height = @area_height / @ybinning
-    @framesize = @frame_width * @frame_height
-    #raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+    # Calculating framesize
+    @framesize = 0
+    data_blocks.each_with_index do |block, i|
+      puts "Checking ROI #{i}" if debug
+      binned_width = @rois[i][:width] / @rois[i][:xbinning]
+      binned_height = @rois[i][:height] / @rois[i][:ybinning]
+      raise "Width mismatch" unless block.attr('width').to_i == binned_width
+      raise "Height mismatch" unless block.attr('height').to_i == binned_height
+      @framesize += binned_height * binned_width
+      puts "W: #{@rois[i][:width]} / #{@rois[i][:xbinning]} H: #{@rois[i][:height]} / #{@rois[i][:ybinning]}" if debug
+    end
 
-    wavelengths_nm = @xml.xpath('//Calibrations/WavelengthMapping/Wavelength').text.split(',')[x0, @framesize].map {|x| x.to_f}
-    @wv = wavelengths_nm
+    raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+
+    wavelengths_nm = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:Wavelength').text.split(',').map {|x| x.to_f}
     
     # @data_creation, @file_creation, @file_modified
     @data_creation = Time.parse(@xml.xpath('//DataHistories/DataHistory/Origin').attr('created').value)
