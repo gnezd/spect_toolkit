@@ -649,19 +649,23 @@ class Spe < Array
     data_blocks = @xml.xpath('//xmlns:DataBlock[@type="Region"]')
     raise "Mismatch of number of blocks and number of sensor mapping information" unless data_blocks.size == @rois.size
 
-    # Calculating framesize
+    # Wavelength mapping
+    wavelengths_mapping = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:Wavelength').text.split(',').map {|x| x.to_f}
+    
+    # Calculating framesize and @wv
     @framesize = 0
+    wavelengths_nm = []
     data_blocks.each_with_index do |block, i|
       puts "Checking ROI #{i}" if debug
       raise "Width mismatch" unless block.attr('width').to_i == @rois[i][:data_width]
       raise "Height mismatch" unless block.attr('height').to_i == @rois[i][:data_height]
       @framesize += @rois[i][:data_width] * @rois[i][:data_height]
+      wavelengths_nm += wavelengths_mapping[@rois[i][:x] .. @rois[i][:data_width]]
       puts "W: #{@rois[i][:width]} / #{@rois[i][:xbinning]} H: #{@rois[i][:height]} / #{@rois[i][:ybinning]}" if debug
     end
 
     raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
 
-    wavelengths_nm = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:Wavelength').text.split(',').map {|x| x.to_f}
     
     # @data_creation, @file_creation, @file_modified
     @data_creation = Time.parse(@xml.at_xpath('//xmlns:Origin').attr('created'))
@@ -716,11 +720,13 @@ class Spe < Array
         i = range.begin
         while i <= range.end
           roi_n = 0
+          in_frame_index = 0
             while roi_n < @rois.size
-              result[i-range.begin][roi_n][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
+              result[i-range.begin][roi_n][0..0] = (in_frame_index..in_frame_index + @rois[roi_n][:data_width]*@rois[roi_n][:data_height] - 1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
               result[i-range.begin][roi_n].name = "#{@name}-#{i}-#{roi_n}"
               result[i-range.begin][roi_n].spectral_range = [@wv[@rois[roi_n][:x]], @wv[@rois[roi_n][:width] + @rois[roi_n][:x]]]
               result[i-range.begin][roi_n].units = @spectrum_units
+              in_frame_index += @rois[roi_n][:data_width]*@rois[roi_n][:data_height]
               roi_n += 1
             end
           i += 1
