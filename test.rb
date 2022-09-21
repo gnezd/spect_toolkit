@@ -684,8 +684,9 @@ def read_spectra_spe_test
 end
 
 def multi_roi_spe_test
-  spe = Spe.new '/mnt/h/Dropbox/RCAS/Workspace/Q3/08Sep/polarization_LCD 13_55_22 microPL.spe', 'polar_cube', {debug: true}
+  spe = Spe.new './testdata/2roi.spe', 'polar_cube', {debug: true}
   puts spe.rois
+  plot_spectra([spe[0][0], spe[0][1], spe[100][0], spe[100][1]], {:outdir => './multi_roi_spect_plot'})
 end
 
 #read_image_spe_test
