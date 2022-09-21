@@ -638,7 +638,9 @@ class Spe < Array
         :width => roi.attr('width').to_i,
         :height => roi.attr('height').to_i,
         :xbinning => roi.attr('xBinning').to_i,
-        :ybinning => roi.attr('yBinning').to_i
+        :ybinning => roi.attr('yBinning').to_i,
+        :data_width => roi.attr('width').to_i / roi.attr('xBinning').to_i,
+        :data_height => roi.attr('height').to_i / roi.attr('yBinning').to_i
       })
     end
     puts "ROIs:\n" + @rois.join("\n") if debug
@@ -651,11 +653,9 @@ class Spe < Array
     @framesize = 0
     data_blocks.each_with_index do |block, i|
       puts "Checking ROI #{i}" if debug
-      binned_width = @rois[i][:width] / @rois[i][:xbinning]
-      binned_height = @rois[i][:height] / @rois[i][:ybinning]
-      raise "Width mismatch" unless block.attr('width').to_i == binned_width
-      raise "Height mismatch" unless block.attr('height').to_i == binned_height
-      @framesize += binned_height * binned_width
+      raise "Width mismatch" unless block.attr('width').to_i == @rois[i][:data_width]
+      raise "Height mismatch" unless block.attr('height').to_i == @rois[i][:data_height]
+      @framesize += @rois[i][:data_width] * @rois[i][:data_height]
       puts "W: #{@rois[i][:width]} / #{@rois[i][:xbinning]} H: #{@rois[i][:height]} / #{@rois[i][:ybinning]}" if debug
     end
 
@@ -664,14 +664,16 @@ class Spe < Array
     wavelengths_nm = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:Wavelength').text.split(',').map {|x| x.to_f}
     
     # @data_creation, @file_creation, @file_modified
-    @data_creation = Time.parse(@xml.xpath('//DataHistories/DataHistory/Origin').attr('created').value)
-    @file_creation = Time.parse(@xml.xpath('//GeneralInformation/FileInformation').attr('created').value)
-    @file_modified= Time.parse(@xml.xpath('//GeneralInformation/FileInformation').attr('lastModified').value)
+    @data_creation = Time.parse(@xml.at_xpath('//xmlns:Origin').attr('created'))
+    @file_creation = Time.parse(@xml.at_xpath('//xmlns:FileInformation').attr('created'))
+    @file_modified= Time.parse(@xml.at_xpath('//xmlns:FileInformation').attr('lastModified'))
+
+    exp_ns = 'http://www.princetoninstruments.com/experiment/2009'.freeze # exp namespace
     # @grating @center wavelength
-    @grating = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Spectrometers/Spectrometer/Grating/Selected').text
-    @center_wavelength = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Spectrometers/Spectrometer/Grating/CenterWavelength').text
+    @grating = @xml.at_xpath('//exp_ns:Grating/exp_ns:Selected', {'exp_ns' => exp_ns}).text
+    @center_wavelength = @xml.at_xpath('//exp_ns:Grating/exp_ns:CenterWavelength', {'exp_ns' => exp_ns}).text
     # @exposure_time
-    @exposure_time = @xml.xpath('//DataHistories/DataHistory/Origin/Experiment/Devices/Cameras/Camera/ShutterTiming/ExposureTime').text.to_f
+    @exposure_time = @xml.at_xpath('//exp_ns:ShutterTiming/exp_ns:ExposureTime', {'exp_ns' => exp_ns}).text.to_f
 
     # Set unit and name
     case options[:spectral_unit]
@@ -703,7 +705,7 @@ class Spe < Array
     puts "Load distribution: #{dist} under #{parallelize} processes." if debug
 
     # Simple: a line of spectrum per frame
-    if @frame_height == 1
+    if @rois.all? {|roi| roi[:data_height] == 1}
       puts "A spectra containing spe" if debug
       super Array.new(@frames) {Spectrum.new()}
       results = Parallel.map(dist, in_processes: parallelize) do |range|
