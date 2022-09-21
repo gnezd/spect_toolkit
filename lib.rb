@@ -707,18 +707,22 @@ class Spe < Array
     # Simple: a line of spectrum per frame
     if @rois.all? {|roi| roi[:data_height] == 1}
       puts "A spectra containing spe" if debug
-      super Array.new(@frames) {Spectrum.new()}
+      super Array.new(@frames) {Array.new(@rois.size) {Spectrum.new()}}
       results = Parallel.map(dist, in_processes: parallelize) do |range|
       #results = Parallel.map(dist, in_threads: parallelize) do |range|
-        result = Array.new(range.size) {Spectrum.new()}
+        result = Array.new(range.size) {Array.new(@rois.size) {Spectrum.new()}}
       #(0..@frames - 1).each do |i|
         puts "A process is taking care of #{range}" if debug
         i = range.begin
         while i <= range.end
-          result[i-range.begin][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
-          result[i-range.begin].name = "#{@name}-#{i}"
-          result[i-range.begin].spectral_range = [@wv[0], @wv[-1]]
-          result[i-range.begin].units = @spectrum_units
+          roi_n = 0
+            while roi_n < @rois.size
+              result[i-range.begin][roi_n][0..0] = (0..@framesize-1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
+              result[i-range.begin][roi_n].name = "#{@name}-#{i}-#{roi_n}"
+              result[i-range.begin][roi_n].spectral_range = [@wv[@rois[roi_n][:x]], @wv[@rois[roi_n][:width] + @rois[roi_n][:x]]]
+              result[i-range.begin][roi_n].units = @spectrum_units
+              roi_n += 1
+            end
           i += 1
         end
         puts "Done #{Time.now}"
@@ -744,7 +748,7 @@ class Spe < Array
   
   def inspect
   #attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
-    ["Spe name: #{@name}", "path: #{@path}", "Contining #{@frames} frames of dimension #{frame_width} x #{frame_height}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
+    ["Spe name: #{@name}", "path: #{@path}", "Contining #{@frames} frames of dimension #{@rois.inspect}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
   end
 
   def each_frame
