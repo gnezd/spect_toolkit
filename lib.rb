@@ -6,10 +6,11 @@ require 'gsl'
 require 'nokogiri'
 require 'time'
 require 'parallel'
+require 'json'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded
+  attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded, :spe
   def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
@@ -104,6 +105,9 @@ class Scan < Array
     puts "Reading spe at #{Time.now}" if debug
     @spe = Spe.new @path, @name, options
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
+
+    raise "Spe size (#{@spe.size}) doesn't match that of scan (#{@width} x #{@height} x #{@depth})" unless @spe.size == @width * @height * @depth
+
     # Spectrum building
     i = 0
     while i < @width
@@ -117,10 +121,7 @@ class Scan < Array
         end
         k = 0
         while k < @depth
-          #frame_st = (k * (@width * @height) + j * @width + i) * @framesize
-          #spe[frame_st .. frame_st + @framesize - 1].each_with_index do |value, sp_index|
           self[relabel_i][j][k] = @spe[k * (@width * @height) + j * @width + i]
-          #end
           k += 1
         end
         j += 1
@@ -128,6 +129,14 @@ class Scan < Array
       i += 1
     end
     puts "Scan building complete at #{Time.now}." if debug
+  end
+
+  def inspect
+    "Scan name: #{@name}, path: #{@path}, dim: #{@width} x #{@height} x #{@depth}, ROIs: #{@spe.rois}, units: #{@spectrum_units}"
+  end
+
+  def to_s
+    inspect
   end
 
   def extract_spect(points)
@@ -180,7 +189,7 @@ class Scan < Array
     outdir = @name unless outdir
     Dir.mkdir outdir unless Dir.exist? outdir
     map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
-    map = Array.new(@depth) {Array.new(@height) {Array.new(@width) {0.0}}}    
+    map = Array.new(@depth) {Array.new(@height) {Array.new(@width) {0.0}}}
 
     # Serialize before parallelization
     i = 0
@@ -189,7 +198,7 @@ class Scan < Array
       y = ((i - x) / @width) % @height
       z = i / (@width * height)
       map[z][y][x] = yield(self[x][y][z])
-    i += 1
+      i += 1
     end
 
     z = 0
@@ -203,23 +212,6 @@ class Scan < Array
       map_fout.print "\n\n"
       z += 1
     end
-=begin
-    # Iterate through z layers
-    (0..@depth-1).each do |z|
-      map = Array.new(@width) {Array.new(@height) {0.0}} # One slice
-      (0..@width-1).each do |x|
-        (0..@height-1).each do |y|
-          map[x][y] = yield(self[x][y][z])
-        end
-      end
-
-      map_fout.puts "# z = #{z}"
-      map.transpose.each do |row|
-        map_fout.puts row.join "\t"
-      end
-      map_fout.print "\n\n"
-    end
-=end
     # Export map and push
     map_fout.close
       # Plotting
@@ -731,18 +723,23 @@ class Spe < Array
             end
           i += 1
         end
-        puts "Done #{Time.now}"
+        puts "Done loadint in thread taking care of #{range} at #{Time.now}." if debug
         result
       end
       dist.each_with_index {|range, i| self[range] = results[i]}
+    
     # Frame contains image
     else
-      puts "#{@name} has images in frames, W: #{@frame_width} H: #{@frame_height}. Loading" if debug
+      puts "#{@name} has images in frames of shape #{@rois}\n Loading." if debug
       #super Array.new(@frames) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
       results = Parallel.map(dist, in_processes: parallelize) do |range|
-        result = Array.new(range.size) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
-        (range.begin * @framesize .. (range.end + 1) * @framesize - 1).each do |i|
-          result[i / @framesize - range.begin][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
+        result = Array.new(range.size) {@rois.map {|roi| Array.new(roi[:data_width]) {Array.new(roi[:data_height]) {0}}}}
+        in_frame_index = 0
+        @rois.each_with_index do |roi, roi_n|
+          (range.begin * @framesize + in_frame_index .. range.end * @framesize + in_frame_index + roi[:data_width] * roi[:data_height] - 1).each do |i|
+            result[i / @framesize - range.begin][roi_n][(i % @framesize) / @frame_width][i % @frame_width] = unpacked_counts[i]
+            in_frame_index += roi[:data_width] * roi[:data_height]
+          end
         end
         result
       end
@@ -755,6 +752,10 @@ class Spe < Array
   def inspect
   #attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
     ["Spe name: #{@name}", "path: #{@path}", "Contining #{@frames} frames of dimension #{@rois.inspect}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
+  end
+
+  def to_s
+    inspect
   end
 
   def each_frame
@@ -818,7 +819,7 @@ def plot_spectra(spectra, options = {})
   else
     plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
-  puts plotdir
+  puts "Ploting to #{plotdir}"
   Dir.mkdir plotdir unless Dir.exist? plotdir
 
   plots = []
