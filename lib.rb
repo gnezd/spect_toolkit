@@ -186,6 +186,8 @@ class Scan < Array
 
   # Plot a scanning map with respect to the summation function given in the block
   def plot_map(outdir = nil, options = nil)
+
+    if block_given?
     outdir = @name unless outdir
     Dir.mkdir outdir unless Dir.exist? outdir
     map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
@@ -244,6 +246,10 @@ GPLOT_HEAD
     gplot.close
     puts "Plotting #{@name}, W: #{@width}, H: #{@height}"
     `gnuplot #{outdir}/#{@name}.gplot`
+  else # No block given
+    puts "No blocks were given. Assume simple summation"
+    plot_map {|spect| spect.sum}
+  end
   end
 
   # Return list of points in rectangular area defined by pt_1(x,y) to pt_2(x,y)
@@ -520,7 +526,7 @@ class Spectrum < Array
     smoothed = self.ma(r)
     maxes = smoothed.local_max(loosen)
     mins = smoothed.local_min(loosen)
-    minmax = (maxes - mins).shift!.pop!
+    minmax = (maxes - mins)[1..-2]
     spikiness = (minmax * minmax) / minmax.size
     [smoothed, maxes, mins, minmax, spikiness]
   end

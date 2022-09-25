@@ -606,7 +606,7 @@ def plot_map_test
   scan = Scan.new 'testdata/spe.spe', 'big_test_plot', [200, 200, 1]
   scan.load({spectral_unit: 'nm', s_scan: true, parallelize: 8, debug: true})
   #scan.load({spectral_unit: 'nm', s_scan: false, parallelize: 8, debug: true})
-  scan.plot_map {|spect| spect.sum}
+  scan.plot_map {|spect| spect[0].sum}
   puts "Finished plotting at #{Time.now}"
 end
 
@@ -715,4 +715,5 @@ end
 #plot_map_test
 #adpl_test
 #multi_roi_spe_test
-multi_roi_scan_test
+#multi_roi_scan_test
+plot_map_test
