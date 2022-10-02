@@ -741,21 +741,27 @@ class Spe < Array
     # Frame contains image
     else
       puts "#{@name} has images in frames of shape #{@rois}\n Loading." if debug
-      puts "Not yet doing parallelism"
-
-      result = Array.new(@frames) { Array.new(@rois[0][:data_width]) {Array.new(@rois[0][:data_height]) {0} }}
-
-      i = 0
-      while (i < unpacked_counts.size)
-        fn = i / @framesize
-        x = i % result[0].size
-        y = i / result[0].size
-        result[fn][x][y] = unpacked_counts[i]
-        i += 1
-      end
-
-      super result
+      super unpacked_counts
     end
+  end
+
+  def at(frame, roin, x = nil, y = nil)
+  # Universal accesor for all regardless of spectrum or image containing Spes
+  raise if (frame == nil) || (roin == nil) # roi and frame must be selected
+
+    # If x not specified, iterate through all x in this roi
+    # If data_height > 1, likely not a spectrum containing stuff
+    if x == nil && @roi[roin][:data_height] > 1
+      result = Array.new(@rois[roin][:data_height]) {Array.new(@rois[roin][:data_width]) {0}}
+      yi = 0
+      while yi < @rois[roin][:data_height]
+        result[yi] = self[frame * @framesize + yi * @rois[roin][:data_width] .. frame * @framesize + (yi+1) * @rois[roin][:data_width] -1]
+        yi += 1
+      end
+      return result.transpose
+    end
+      
+
   end
   
   def inspect

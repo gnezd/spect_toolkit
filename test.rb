@@ -633,7 +633,7 @@ end
 def read_image_spe_test
   spe = Spe.new './testdata/10000ms_dark 17_31_49 microPL.spe', '10s', {:spectral_unit => 'eV', parallelize: 1, debug: true}
   puts spe.inspect
-  matrix_write spe[0], 'img.tsv'
+  matrix_write spe.at(0,0), 'img.tsv'
 end
 
 def read_spectra_spe_benchmark
@@ -708,7 +708,6 @@ def multi_roi_scan_test
 end
 
 
-read_image_spe_test
 #read_image_spe_benchmark
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
@@ -717,3 +716,4 @@ read_image_spe_test
 #multi_roi_spe_test
 #multi_roi_scan_test
 #plot_map_test
+read_image_spe_test
