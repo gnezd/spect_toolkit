@@ -620,7 +620,7 @@ class Spe < Array
     xml_index = raw[678..685].unpack1('Q')
     xml_raw = raw[xml_index..-1]
     binary_data = raw[0x1004..xml_index-1].freeze
-    unpacked_counts = binary_data.unpack('S*')
+    unpacked_counts = binary_data.unpack('S*').freeze
     puts "Unpacked binary has a lenght of: #{unpacked_counts.size}" if debug
 
     @xml = Nokogiri.XML(xml_raw)
@@ -741,39 +741,21 @@ class Spe < Array
     # Frame contains image
     else
       puts "#{@name} has images in frames of shape #{@rois}\n Loading." if debug
-      #super Array.new(@frames) {Array.new(@frame_height) {Array.new(@frame_width) {0}}}
-      roi = @rois[0]
-      results = Parallel.map(dist, in_processes: parallelize) do |range|
-        puts "Doing #{range}"
-        #result = Array.new(range.size) {@rois.map {|roi| Array.new(roi[:data_width]) {Array.new(roi[:data_height]) {0}}}}
-        # Don't consider ROI
-        result = Array.new(range.size) {Array.new(roi[:data_width]) {Array.new(roi[:data_height]) {0}}}
-        #in_frame_index = 0
-        #@rois.each_with_index do |roi, roi_n|
-          roisize = roi[:data_width] * roi[:data_height]
-          #(range.begin * @framesize + in_frame_index .. range.end * @framesize + in_frame_index + roisize - 1).each do |i|
-          (range.begin * @framesize .. range.end * @framesize - 1).each do |i|
-            #iiroi = i - range.begin * @framesize - in_frame_index #i in roi
-            #puts "#{in_frame_index} in thread #{range}"
-            begin
-            #result[iiroi / roisize][roi_n][iiroi % roi[:data_width]][iiroi / roi[:data_width]] = unpacked_counts[i]
-            result[i / @framesize - range.begin][i % roi[:data_width]][i / roi[:data_width]] = unpacked_counts[i]
-            rescue NoMethodError
-              puts "NoMethodError occured at #{i}, in thread #{range} roi #{roi_n}"
-              puts "iiroi: #{iiroi} in_frame_index: #{in_frame_index}"
-              raise "bang"
-            end
-          end
-        #  in_frame_index += roisize
-        #end
-        puts "Done #{range}, passing back result of shape #{result.size} x #{result[0].size} x #{result[0][0].size}" if debug
-        result
+      puts "Not yet doing parallelism"
+
+      result = Array.new(@frames) { Array.new(@rois[0][:data_width]) {Array.new(@rois[0][:data_height]) {0} }}
+
+      i = 0
+      while (i < unpacked_counts.size)
+        fn = i / @framesize
+        x = i % result[0].size
+        y = i / result[0].size
+        result[fn][x][y] = unpacked_counts[i]
+        i += 1
       end
 
-      puts "Loading complete at #{Time.now}" if debug
+      super result
     end
-    puts "All processes finished. Stitching up."
-    super results.reduce(:+)
   end
   
   def inspect
