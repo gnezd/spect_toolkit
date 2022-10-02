@@ -687,13 +687,13 @@ def multi_roi_spe_test
   spe = Spe.new './testdata/2roi.spe', 'polar_cube', {debug: true, parallelize: 8, spectral_unit: 'eV'}
   puts spe.rois
   #plot_spectra((0..18).map{|i| spe[10* i][0]}, {:outdir => './multi_roi_spect_plot'})
-  plot_spectra(spe[100] + spe[140], {:outdir => './multi_roi_spect_plot'})
+  plot_spectra([spe.at(100, 0), spe.at(100, 1), spe.at(140, 0), spe.at(140, 1)], {:outdir => './multi_roi_spect_plot'})
 end
 
 # Processing scan with multiple roi
 def multi_roi_scan_test
-  fin = '/mnt/h/Dropbox/RCAS/Workspace/Q3/16-Sep/2564-1-scan-1850 19_35_13 microPL.spe'
-  json = '/mnt/h/Dropbox/RCAS/Workspace/Q3/16-Sep/Scan_param193517 microPL.json'
+  fin = './testdata/2564-1-scan-1850 19_35_13 microPL.spe'
+  json = './testdata/Scan_param193517 microPL.json'
   #params = JSON::parse(File.open('./testdata/2564-1-polar-scan.param').read)
   params = JSON::parse(File.open(json).read)
   puts params
@@ -703,8 +703,8 @@ def multi_roi_scan_test
   scan.load({parallelize: 8, debug: true})
   puts scan.inspect
   puts scan[0].size
-  scan.plot_map('polar_scan') {|spect| (spect[0] - spect[1]).sum}
-  #scan.plot_map('polar_scan2') {|spect| spect[1].sum}
+  scan.plot_map('polar_scan') {|spect| spect[0].sum}
+  scan.plot_map('polar_scan2') {|spect| spect[1].sum}
 end
 
 
@@ -714,6 +714,6 @@ end
 #plot_map_test
 #adpl_test
 #multi_roi_spe_test
-#multi_roi_scan_test
+multi_roi_scan_test
 #plot_map_test
-read_image_spe_test
+#read_image_spe_test

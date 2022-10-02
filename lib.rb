@@ -106,7 +106,7 @@ class Scan < Array
     @spe = Spe.new @path, @name, options
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
 
-    raise "Spe size (#{@spe.size}) doesn't match that of scan (#{@width} x #{@height} x #{@depth})" unless @spe.size == @width * @height * @depth
+    raise "Spe size (#{@spe.size}) doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
     i = 0
@@ -121,7 +121,8 @@ class Scan < Array
         end
         k = 0
         while k < @depth
-          self[relabel_i][j][k] = @spe[k * (@width * @height) + j * @width + i]
+          #self[relabel_i][j][k] = @spe[k * (@width * @height) + j * @width + i]
+          self[relabel_i][j][k] = (0..@spe.rois.size-1).map {|roin| @spe.at(k * (@width * @height) + j * @width + i, roin)}
           self[relabel_i][j][k].each_with_index do |roi, n|
             roi.name = "#{@name}-#{i}-#{j}-#{k}-#{n}"
             roi.update_info
@@ -603,7 +604,7 @@ class Alignment
 end
 
 class Spe < Array
-  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :rois
+  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height,:framesize, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :rois
   
   def initialize(path, name, options={})
     debug = options[:debug]
@@ -662,10 +663,9 @@ class Spe < Array
       raise "Width mismatch" unless block.attr('width').to_i == @rois[i][:data_width]
       raise "Height mismatch" unless block.attr('height').to_i == @rois[i][:data_height]
       @framesize += @rois[i][:data_width] * @rois[i][:data_height]
-      wavelengths_nm += wavelengths_mapping[@rois[i][:x] .. @rois[i][:data_width]]
+      wavelengths_nm += wavelengths_mapping[@rois[i][:x] .. @rois[i][:x]+@rois[i][:data_width]-1]
       puts "W: #{@rois[i][:width]} / #{@rois[i][:xbinning]} H: #{@rois[i][:height]} / #{@rois[i][:ybinning]}" if debug
     end
-
     raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
 
     
@@ -700,49 +700,17 @@ class Spe < Array
     else
       parallelize = 1 # Processes
     end
-    dist = []
-    frames_per_dist = (@frames.to_f / parallelize).ceil
-    (0..parallelize-1).each do |process|
-      till = (process + 1) * frames_per_dist - 1
-      till = @frames - 1 unless till < @frames
-      break if dist.last&.end == till
-      dist.push(process * frames_per_dist .. till)
-    end
-    puts "Load distribution: #{dist} under #{parallelize} processes." if debug
 
     # Simple: a line of spectrum per frame
     if @rois.all? {|roi| roi[:data_height] == 1}
-      puts "A spectra containing spe" if debug
-      super Array.new(@frames) {Array.new(@rois.size) {Spectrum.new()}}
-      results = Parallel.map(dist, in_processes: parallelize) do |range|
-      #results = Parallel.map(dist, in_threads: parallelize) do |range|
-        result = Array.new(range.size) {Array.new(@rois.size) {Spectrum.new()}}
-      #(0..@frames - 1).each do |i|
-        puts "A process is taking care of #{range}" if debug
-        i = range.begin
-        while i <= range.end
-          roi_n = 0
-          in_frame_index = 0
-            while roi_n < @rois.size
-              result[i-range.begin][roi_n][0..0] = (in_frame_index..in_frame_index + @rois[roi_n][:data_width]*@rois[roi_n][:data_height] - 1).map{|sp_index| [@wv[sp_index], unpacked_counts[i * @framesize + sp_index]]}
-              result[i-range.begin][roi_n].name = "#{@name}-#{i}-#{roi_n}"
-              result[i-range.begin][roi_n].spectral_range = [@wv[@rois[roi_n][:x]], @wv[@rois[roi_n][:width] + @rois[roi_n][:x]]]
-              result[i-range.begin][roi_n].units = @spectrum_units
-              in_frame_index += @rois[roi_n][:data_width]*@rois[roi_n][:data_height]
-              roi_n += 1
-            end
-          i += 1
-        end
-        puts "Done loadint in thread taking care of #{range} at #{Time.now}." if debug
-        result
-      end
-      dist.each_with_index {|range, i| self[range] = results[i]}
-    
+      puts "All rois contain spectra, a spectra containing spe" if debug
     # Frame contains image
     else
       puts "#{@name} has images in frames of shape #{@rois}\n Loading." if debug
-      super unpacked_counts
     end
+    
+    # Regardless of roi situation, just store unpacked_counts
+    super unpacked_counts
   end
 
   def at(frame, roin, x = nil, y = nil)
@@ -751,7 +719,7 @@ class Spe < Array
 
     # If x not specified, iterate through all x in this roi
     # If data_height > 1, likely not a spectrum containing stuff
-    if x == nil && @roi[roin][:data_height] > 1
+    if x == nil && @rois[roin][:data_height] > 1
       result = Array.new(@rois[roin][:data_height]) {Array.new(@rois[roin][:data_width]) {0}}
       yi = 0
       while yi < @rois[roin][:data_height]
@@ -759,6 +727,25 @@ class Spe < Array
         yi += 1
       end
       return result.transpose
+    elsif @rois[roin][:data_height] == 1
+      result = Spectrum.new()
+      xi = 0
+      roishift = 0
+      roii = 0
+      while roii < roin
+        roishift += @rois[roii][:data_width] * @rois[roii][:data_height]
+        roii += 1
+      end
+
+      while xi < @rois[roin][:data_width]
+        result[xi] = [@wv[xi + roishift], 
+        self[frame * @framesize + roishift + xi]]
+        xi += 1
+      end
+      result.name = "#{@name}-#{frame}-roi#{roin}"
+      result.update_info
+      result.units = @spectrum_units
+      return result
     end
       
 
@@ -905,6 +892,7 @@ GPLOT_replot
 end
 
 def matrix_write(matrix, path)
+  matrix = matrix.transpose
   raise "Some entries in data are different in length" unless matrix.all? {|line| line.size == matrix[0].size}
   matrix_out = File.open path, 'w'
   matrix.each do |line|
