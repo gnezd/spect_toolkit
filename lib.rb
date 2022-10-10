@@ -204,7 +204,7 @@ class Scan < Array
       x = i % @width
       y = ((i - x) / @width) % @height
       z = i / (@width * height)
-      map[z][y][x] = yield(self[x][y][z])
+      map[z][y][x] = yield(self[x][y][z], [x, y, z])
       i += 1
     end
 
