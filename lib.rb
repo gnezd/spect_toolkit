@@ -777,35 +777,42 @@ class ADPL
 
   # Plotting ADPL data, with given density of scan per degree
   def plot(output_path)
-    data_export = Array.new(@spe.size) {Array.new(@spe[0].size) {0}}
-    @spe.each_with_index do |spectrum, i|
-      spectrum.each_with_index do |pt, j|
-        data_export[i][j] = pt[1]
+
+    Dir.mkdir output_path unless Dir.exist? output_path
+    @spe.rois.each_with_index do |roi, roin|
+      data_export = Array.new(@spe.frames) {Array.new(@spe.rois[roin][:data_width]) {0}}
+      frame = 0
+      while frame < @spe.frames
+        @spe.at(frame, roin).each_with_index do |pt, j|
+          data_export[frame][j] = pt[1]
+        end
+        frame += 1
       end
-    end
-    tsv_name = output_path + @name + ".tsv"
-    matrix_write data_export, tsv_name
+      tsv_name = "#{@name}-#{roin}.tsv"
+      matrix_write data_export.transpose, "#{output_path}/#{tsv_name}"
+      wvslope = (@spe.wv[roi[:x]+roi[:width]-2] - @spe.wv[roi[:x]])/roi[:data_width]
+      wvoffset = @spe.wv[roi[:x]]
+  gnuplot_content =<<GPLOTCONTENT
+  set terminal png size 1000,800
+  set xlabel 'wavelength (nm)'
+  set ylabel 'angle (°)'
+  unset key
+  set pm3d map
+  set pm3d interpolate 0,0
 
-gnuplot_content =<<GPLOTCONTENT
-set terminal png size 1000,800
-set xlabel 'wavelength (nm)'
-set ylabel 'angle (°)'
-unset key
-set pm3d map
-set pm3d interpolate 0,0
+  set output '#{output_path}/#{@name}-#{roin}.png'
+  set title '#{(@name + "-" + roin.to_s).gsub('_', '\_')}'
 
-set output '#{output_path + @name}.png'
-set title '#{@name.gsub('_', '\_')}'
+  set xrange [400:750]
 
-set xrange [400:750]
-
-splot '#{output_path + @name}.tsv' matrix u ($1*0.30623 + 364.8464):(90-$2/#{@scans_per_deg}):3
+  splot '#{output_path}/#{@name}-#{roin}.tsv' matrix u ($1*#{wvslope} + #{wvoffset}):(90-$2/#{@scans_per_deg}):3
 GPLOTCONTENT
 
-    gnuplot_fout = File.open "#{output_path + @name}.gplot", 'w'
-    gnuplot_fout.puts gnuplot_content
-    gnuplot_fout.close
-    `gnuplot #{output_path + @name}.gplot`
+      gnuplot_fout = File.open "#{output_path}/#{@name}-#{roin}.gplot", 'w'
+      gnuplot_fout.puts gnuplot_content
+      gnuplot_fout.close
+      `gnuplot #{output_path}/#{@name}-#{roin}.gplot`
+    end
   end
 end
 
