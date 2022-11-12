@@ -192,6 +192,13 @@ class Scan < Array
   # Plot a scanning map with respect to the summation function given in the block
   def plot_map(outdir = nil, options = nil)
 
+    if options[:scale].is_a?(Integer) && options[:scale] > 0
+      scale = options[:scale] * 5
+      print "Setting map plotting scale to #{scale}"
+    else
+      scale = 5
+    end
+
     if block_given?
     outdir = @name unless outdir
     Dir.mkdir outdir unless Dir.exist? outdir
@@ -224,7 +231,7 @@ class Scan < Array
       # Plotting
     gplot = File.open "#{outdir}/#{@name}.gplot", 'w'
   gplot_content =<<GPLOT_HEAD
-set terminal svg size #{@width * 5 * @depth},#{@height * 5} mouse enhanced standalone
+set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone
 set size ratio -1
 set output '#{outdir}/#{@name}.svg'
 set border 0
@@ -236,7 +243,7 @@ set yrange[-0.5:#{@height-0.5}]
 set title '#{@name.gsub('_','\_')}'
 unset colorbox
 set palette cubehelix negative
-#set terminal png size #{@width * 5},#{@height * 5}
+#set terminal png size #{@width * scale},#{@height * scale}
 #set output '#{outdir}/#{@name}.png'
 set multiplot
 GPLOT_HEAD
@@ -555,8 +562,9 @@ class Spectrum < Array
 
   def from_to(from, to)
     sum = 0.0
+    sorted = [from, to].sort
     self.each do |pt|
-      sum += pt[1] if ((pt[0] > from) && (pt[0] < to))
+      sum += pt[1] if ((pt[0] > sorted[0]) && (pt[0] < sorted[1]))
     end
     sum
   end
@@ -823,8 +831,8 @@ def plot_spectra(spectra, options = {})
   x_units = spectra.map {|spectrum| spectrum.units[0]}
   raise "Some spectra have different units!" unless x_units.all? {|unit| unit == x_units[0]}
 
-  if options[:outdir]
-    plotdir = options[:outdir]
+  if options[:out_dir]
+    plotdir = options[:out_dir]
   else
     plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
