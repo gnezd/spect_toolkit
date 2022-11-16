@@ -1,5 +1,5 @@
 # Script for the processing of micro-PL scann data
-
+VERSION = '2022Nov16-1'.freeze
 # No longer needed as long you export NMATRX=1
 # require 'nmatrix'
 require 'gsl'
@@ -152,7 +152,7 @@ class Scan < Array
     end
     result = []
     points.each do |pt|
-      result.push self[pt[0]][pt[1]][pt[2]]
+      result += self[pt[0]][pt[1]][pt[2]]
       result.last.name = pt.join '-'
     end 
     result
@@ -191,30 +191,32 @@ class Scan < Array
 
   # Plot a scanning map with respect to the summation function given in the block
   def plot_map(outdir = nil, options = nil)
-
+    # We need a block to calculate the map
+    if block_given? 
     if options[:scale].is_a?(Integer) && options[:scale] > 0
       scale = options[:scale] * 5
-      print "Setting map plotting scale to #{scale}"
+      puts "Setting map plotting scale to #{scale}"
     else
       scale = 5
     end
 
-    if block_given?
-    outdir = @name unless outdir
-    Dir.mkdir outdir unless Dir.exist? outdir
-    map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
+    # Building map matrix
     map = Array.new(@depth) {Array.new(@height) {Array.new(@width) {0.0}}}
 
     # Serialize before parallelization
     i = 0
-    while i < @width * @height * @depth
-      x = i % @width
-      y = ((i - x) / @width) % @height
-      z = i / (@width * height)
-      map[z][y][x] = yield(self[x][y][z], [x, y, z])
-      i += 1
-    end
+      while i < @width * @height * @depth
+        x = i % @width
+        y = ((i - x) / @width) % @height
+        z = i / (@width * height)
+        map[z][y][x] = yield(self[x][y][z], [x, y, z])
+        i += 1
+      end
 
+    # Exporting map matrix
+    outdir = @name unless outdir
+    Dir.mkdir outdir unless Dir.exist? outdir
+    map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
     z = 0
     while z < @depth
       row = 0
@@ -230,8 +232,16 @@ class Scan < Array
     map_fout.close
       # Plotting
     gplot = File.open "#{outdir}/#{@name}.gplot", 'w'
-  gplot_content =<<GPLOT_HEAD
-set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone
+
+    case options&.[](:plot_style)
+    when nil
+      gplot_terminal = "set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone"
+    end
+
+
+gplot_content =<<GPLOT_HEAD
+# Created by microPL_scan version #{VERSION}
+#{gplot_terminal}
 set size ratio -1
 set output '#{outdir}/#{@name}.svg'
 set border 0
@@ -241,15 +251,17 @@ unset ytics
 set xrange[-0.5:#{@width-0.5}]
 set yrange[-0.5:#{@height-0.5}]
 set title '#{@name.gsub('_','\_')}'
-unset colorbox
+#unset colorbox
 set palette cubehelix negative
 #set terminal png size #{@width * scale},#{@height * scale}
 #set output '#{outdir}/#{@name}.png'
 set multiplot
 GPLOT_HEAD
+
     gplot.puts gplot_content
     (0..@depth-1).each do |z|
-      gplot.puts "set title 'z = #{z}'"
+      gplot.puts "set title 'z = #{z}'" if @depth > 1
+      gplot.puts "set title '#{@name.gsub('_', '\\_')}'" if @depth == 1
       gplot.puts "set origin #{z.to_f / @depth},0"
       gplot.puts "set size #{1.0/@depth},1"
       gplot.puts "plot'#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
@@ -258,6 +270,7 @@ GPLOT_HEAD
     gplot.close
     puts "Plotting #{@name}, W: #{@width}, H: #{@height}"
     `gnuplot #{outdir}/#{@name}.gplot`
+  
   else # No block given
     puts "No blocks were given. Assume simple summation"
     plot_map {|spect| spect.sum}
@@ -843,22 +856,22 @@ def plot_spectra(spectra, options = {})
    plots += options['plotline_inject'] if options['plotline_inject']
   spectra.each_with_index do |spectrum, i|
     spectrum.write_tsv(plotdir + '/' + spectrum.name + '.tsv')
-    plots.push "'#{plotdir}/#{spectrum.name}.tsv' with lines lt #{i+1}"
+    plots.push "'#{plotdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1}"
   end
   plotline = "plot " + plots.join(", \\\n")
   gplot = File.open plotdir + "/gplot", 'w'
   plot_headder = <<GPLOT_HEADER
-  set terminal png size 800,600 lw 2
-  set output '#{plotdir}/spect_plot.png'
-  set xlabel '#{x_units[0]}'
-  set ylabel 'intensity (cts)'
+set terminal png size 800,600 lw 2
+set output '#{plotdir}/spect_plot.png'
+set xlabel '#{x_units[0]}'
+set ylabel 'intensity (cts)'
 GPLOT_HEADER
   gplot.puts plot_headder
   gplot.puts plotline
   plot_replot = <<GPLOT_replot
-  set terminal svg mouse enhanced standalone size 800,600 lw 2
-  set output '#{plotdir}/spect_plot.svg'
-  replot
+set terminal svg mouse enhanced standalone size 800,600 lw 2
+set output '#{plotdir}/spect_plot.svg'
+replot
 GPLOT_replot
   gplot.puts options['extra_setup'] if options['extra_setup']
   gplot.puts plot_replot
@@ -911,7 +924,7 @@ def matrix_write(matrix, path)
   raise "Some entries in data are different in length" unless matrix.all? {|line| line.size == matrix[0].size}
   matrix_out = File.open path, 'w'
   matrix.each do |line|
-    matrix_out.puts line.join "\t" 
+    matrix_out.puts line.join "," 
   end
   matrix_out.close
 end
