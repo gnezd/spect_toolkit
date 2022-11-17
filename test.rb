@@ -707,13 +707,20 @@ def multi_roi_scan_test
   scan.plot_map('polar_scan2') {|spect| spect[1].sum}
 end
 
+def load_scan_with_param_json
+  scan = Scan.new('testdata/raman/261_1 11-11-2022 16_59_36 19 microPL.spe', 'IP_graphene_261', nil, {param_json: './testdata/raman/Scan_param165942_261_1 microPL.json'})
+  scan.load({spectral_unit: 'wavenumber', scale: 5})
+  scan.plot_map('raman_plot', {scale: 5}) {|spect| spect[0].from_to(17422, 17200)}
+end
 
+load_scan_with_param_json
 #read_image_spe_benchmark
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
 #plot_map_test
 #adpl_test
 #multi_roi_spe_test
-multi_roi_scan_test
+#multi_roi_scan_test
 #plot_map_test
 #read_image_spe_test
+

@@ -1,5 +1,5 @@
 # Script for the processing of micro-PL scann data
-VERSION = '2022Nov16-1'.freeze
+VERSION = '2022Nov17-1'.freeze
 # No longer needed as long you export NMATRX=1
 # require 'nmatrix'
 require 'gsl'
@@ -10,16 +10,27 @@ require 'json'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded, :spe
+  attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded, :spe, :s_scan
   def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
-    @width = dim[0]
-    @height = dim[1]
-      @depth = dim[2]
+    
+    @width = dim&.[] 0
+    @height = dim&.[] 1
+    @depth = dim&.[] 2
+    
+    if options&.[](:param_json)
+      scan_param = JSON::parse(File.open(options[:param_json]).read)
+      @width = scan_param['Points X']
+      @height= scan_param['Points Y']
+      @depth = scan_param['Points Z']
+      @s_scan = scan_param['S-shape scan']
+    end
+
     @loaded = false
     @spectral_width = 0
     super Array.new(width) {Array.new(height) {Array.new(depth) {Spectrum.new()}}}
+    puts "#{name} loaded from #{path}"
   end
 
   def load(options = {})
@@ -113,7 +124,7 @@ class Scan < Array
     while i < @width
       j = 0
       while j < @height
-        if j % 2 == 1 && options[:s_scan] == true
+        if j % 2 == 1 && @s_scan == true
           #puts "Loading with S-shape scan"
           relabel_i = @width - i - 1
         else
@@ -193,7 +204,7 @@ class Scan < Array
   def plot_map(outdir = nil, options = nil)
     # We need a block to calculate the map
     if block_given? 
-    if options[:scale].is_a?(Integer) && options[:scale] > 0
+    if (options&.[](:scale)).is_a?(Integer) && options[:scale] > 0
       scale = options[:scale] * 5
       puts "Setting map plotting scale to #{scale}"
     else
