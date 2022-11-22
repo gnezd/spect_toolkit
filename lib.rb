@@ -117,7 +117,7 @@ class Scan < Array
     @spe = Spe.new @path, @name, options
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
 
-    raise "Spe size (#{@spe.size}) doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
+    raise "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
     i = 0
@@ -243,18 +243,42 @@ class Scan < Array
     map_fout.close
       # Plotting
     gplot = File.open "#{outdir}/#{@name}.gplot", 'w'
-
-    case options&.[](:plot_style)
-    when nil
-      gplot_terminal = "set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone"
+    
+    # Caution: variable z reused. Previously a counter for building map matrix, now indicating z layer to plot
+    z = 0
+    if options&.[](:z)
+      puts "z set"
+      z = options[:z].to_i
     end
+
+    case options&.[](:plot_term)
+    when nil, 'svg' # Means not indicated or svg
+      plot_output = "#{outdir}/#{@name}.svg"
+      gplot_terminal =<<GP_TERM
+set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone
+set output '#{plot_output}'
+GP_TERM
+    when 'png'
+      plot_output = "#{outdir}/#{@name}.png"
+      gplot_terminal =<<GP_TERM
+set terminal png size #{@width * scale * @depth},#{@height * scale}
+set output '#{plot_output}'
+GP_TERM
+    when 'tkcanvas-rb'
+      plot_output = "#{outdir}/#{@name}-#{z}.rb"
+      gplot_terminal =<<GP_TERM
+set terminal tkcanvas ruby
+set output '#{plot_output}'
+GP_TERM
+    end
+
+    gplot_style = options&.[](:plot_style)
 
 
 gplot_content =<<GPLOT_HEAD
 # Created by microPL_scan version #{VERSION}
 #{gplot_terminal}
 set size ratio -1
-set output '#{outdir}/#{@name}.svg'
 set border 0
 unset key
 unset xtics
@@ -262,29 +286,40 @@ unset ytics
 set xrange[-0.5:#{@width-0.5}]
 set yrange[-0.5:#{@height-0.5}]
 set title '#{@name.gsub('_','\_')}'
-#unset colorbox
-set palette cubehelix negative
-#set terminal png size #{@width * scale},#{@height * scale}
-#set output '#{outdir}/#{@name}.png'
-set multiplot
+set palette cubehelix
+set cbtics scale 0
+unset grid
+#{gplot_style}
 GPLOT_HEAD
 
     gplot.puts gplot_content
-    (0..@depth-1).each do |z|
-      gplot.puts "set title 'z = #{z}'" if @depth > 1
-      gplot.puts "set title '#{@name.gsub('_', '\\_')}'" if @depth == 1
-      gplot.puts "set origin #{z.to_f / @depth},0"
-      gplot.puts "set size #{1.0/@depth},1"
-      gplot.puts "plot'#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
+
+    if !(z) && @depth > 1
+      # Iterating through z layers
+      gplot.puts "set multiplot"
+      (0..@depth-1).each do |z|
+        gplot.puts "set title 'z = #{z}'"
+        gplot.puts "set origin #{z.to_f / @depth},0"
+        gplot.puts "set size #{1.0/@depth},1"
+        gplot.puts "plot '#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
+      end
+      puts "Plotting #{@name}, W: #{@width}, H: #{@height}"
+      gplot.puts "unset multiplot"
+      
+    else
+      # 1 sheet plotting
+      gplot.puts "set title '#{@name.gsub('_', '\\_')}'"
+      gplot.puts "plot '#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
     end
-    gplot.puts "unset multiplot"
+
     gplot.close
-    puts "Plotting #{@name}, W: #{@width}, H: #{@height}"
     `gnuplot #{outdir}/#{@name}.gplot`
+    return plot_output
   
   else # No block given
-    puts "No blocks were given. Assume simple summation"
-    plot_map {|spect| spect.sum}
+    puts "No blocks were given. Assume simple summation across all ROIs."
+    plot_output = plot_map(outdir, options) {|spects| (spects.map{|spect| spect.sum}).sum}
+    return plot_output
   end
   end
 
@@ -856,38 +891,60 @@ def plot_spectra(spectra, options = {})
   raise "Some spectra have different units!" unless x_units.all? {|unit| unit == x_units[0]}
 
   if options[:out_dir]
-    plotdir = options[:out_dir]
+    outdir = options[:out_dir]
   else
-    plotdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
+    outdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
-  puts "Ploting to #{plotdir}"
-  Dir.mkdir plotdir unless Dir.exist? plotdir
+
+  puts "Ploting to #{outdir}"
+  Dir.mkdir outdir unless Dir.exist? outdir
 
   plots = []
    plots += options['plotline_inject'] if options['plotline_inject']
   spectra.each_with_index do |spectrum, i|
-    spectrum.write_tsv(plotdir + '/' + spectrum.name + '.tsv')
-    plots.push "'#{plotdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1}"
+    spectrum.write_tsv(outdir + '/' + spectrum.name + '.tsv')
+    plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1} t '#{spectrum.name.gsub('_', '\_')}'"
   end
   plotline = "plot " + plots.join(", \\\n")
-  gplot = File.open plotdir + "/gplot", 'w'
+  
+  case options&.[](:plot_term)
+  when nil, 'svg' # Means not indicated or svg
+    plot_output = "#{outdir}/spect-plot.svg"
+    gplot_terminal =<<GP_TERM
+set terminal svg size 800,600 mouse enhanced standalone
+set output '#{plot_output}'
+GP_TERM
+  when 'png'
+    plot_output = "#{outdir}/spect-plot.png"
+    gplot_terminal =<<GP_TERM
+set terminal png size 800,600
+set output '#{plot_output}'
+GP_TERM
+  when 'svg'
+    plot_output = "#{outdir}/spect-plot.svg"
+    gplot_terminal =<<GP_TERM
+set terminal svg size 800,600 mouse standalone enhanced
+set output '#{plot_output}'
+GP_TERM
+  when 'tkcanvas-rb'
+    plot_output = "#{outdir}/spect-plot.rb"
+    gplot_terminal =<<GP_TERM
+set terminal tkcanvas ruby
+set output '#{plot_output}'
+GP_TERM
+  end
+  
+  gplot = File.open outdir+ "/gplot", 'w'
   plot_headder = <<GPLOT_HEADER
-set terminal png size 800,600 lw 2
-set output '#{plotdir}/spect_plot.png'
+#{gplot_terminal}
 set xlabel '#{x_units[0]}'
 set ylabel 'intensity (cts)'
 GPLOT_HEADER
   gplot.puts plot_headder
   gplot.puts plotline
-  plot_replot = <<GPLOT_replot
-set terminal svg mouse enhanced standalone size 800,600 lw 2
-set output '#{plotdir}/spect_plot.svg'
-replot
-GPLOT_replot
-  gplot.puts options['extra_setup'] if options['extra_setup']
-  gplot.puts plot_replot
   gplot.close
-  system("gnuplot #{plotdir}/gplot")
+  system("gnuplot #{outdir}/gplot")
+  return plot_output
 end
 
 # Quick 'n dirty func. to convert plot coord. to piezo coord.

@@ -692,8 +692,8 @@ end
 
 # Processing scan with multiple roi
 def multi_roi_scan_test
-  fin = './testdata/2564-1-scan-1850 19_35_13 microPL.spe'
-  json = './testdata/Scan_param193517 microPL.json'
+  fin = './testdata/2564-1-polar-scan.spe'
+  json = './testdata/2564-1-polar-scan.param'
   #params = JSON::parse(File.open('./testdata/2564-1-polar-scan.param').read)
   params = JSON::parse(File.open(json).read)
   puts params
@@ -703,8 +703,8 @@ def multi_roi_scan_test
   scan.load({parallelize: 8, debug: true})
   puts scan.inspect
   puts scan[0].size
-  scan.plot_map('polar_scan') {|spect| spect[0].sum}
-  scan.plot_map('polar_scan2') {|spect| spect[1].sum}
+  scan.plot_map('polar_scan', {scale: 5}) {|spect| spect[0].sum}
+  scan.plot_map('polar_scan2', {scale: 5}) {|spect| spect[1].sum}
 end
 
 def load_scan_with_param_json
@@ -713,7 +713,42 @@ def load_scan_with_param_json
   scan.plot_map('raman_plot', {scale: 5}) {|spect| spect[0].from_to(17422, 17200)}
 end
 
-load_scan_with_param_json
+def plot_map_style_test
+  fin = './testdata/2564-1-polar-scan.spe'
+  json = './testdata/2564-1-polar-scan.param'
+  scan = Scan.new(fin, '2564-1', nil, {param_json: json})
+  scan.load()
+  style = 'set terminal png background "black"
+  set title textcolor "white"
+  set label tc "white"
+  set border lc "white"
+  set colorbox noborder
+  '
+  puts scan.plot_map('plot_map_w_style', {scale: 5, plot_term: 'png', plot_style: style})
+end
+
+def tkcanvas_plot_test
+  fin = './testdata/2564-1-polar-scan.spe'
+  json = './testdata/2564-1-polar-scan.param'
+  scan = Scan.new(fin, '2564-1', nil, {param_json: json})
+  scan.load()
+  puts scan.plot_map('plot_map_w_style', {scale: 5, plot_term: 'tkcanvas-rb'})
+end
+
+def plot_spectra_term_test
+  fin = './testdata/2564-1-polar-scan.spe'
+  json = './testdata/2564-1-polar-scan.param'
+  scan = Scan.new(fin, '2564-1', nil, {param_json: json})
+  scan.load()
+  puts plot_spectra(scan[0][0][0], {out_dir: './testspectraplot'})
+  puts plot_spectra(scan[0][0][0], {out_dir: './testspectraplot', plot_term: 'png'})
+  puts plot_spectra(scan[0][0][0], {out_dir: './testspectraplot', plot_term: 'tkcanvas-rb'})
+end
+
+plot_spectra_term_test
+#tkcanvas_plot_test
+#plot_map_style_test
+#load_scan_with_param_json
 #read_image_spe_benchmark
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
