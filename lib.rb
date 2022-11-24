@@ -1,11 +1,11 @@
 # Script for the processing of micro-PL scann data
-VERSION = '2022Nov17-1'.freeze
+VERSION = '2023Nov17-1'.freeze
 # No longer needed as long you export NMATRX=1
 # require 'nmatrix'
 require 'gsl'
 require 'nokogiri'
 require 'time'
-require 'parallel'
+#require 'parallel'
 require 'json'
 
 class Scan < Array

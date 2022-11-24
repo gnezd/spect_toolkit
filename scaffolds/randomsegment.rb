@@ -1,4 +1,4 @@
-require './lib.rb'
+require '../lib.rb'
 
 spect1 = Spectrum.new 'fft_contest/10-spect.tsv'
 windowsize = 800

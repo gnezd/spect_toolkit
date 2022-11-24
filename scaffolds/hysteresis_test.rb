@@ -1,4 +1,4 @@
-require './lib.rb'
+require '../lib.rb'
 =begin
 scan = Scan.new 'testdata/spe.spe', '2566-3-s_scan', [200, 200, 1]
 scan.load({:s_scan => true})
