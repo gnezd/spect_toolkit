@@ -908,6 +908,7 @@ end
 
 # Plot the spectra in an arra
 def plot_spectra(spectra, options = {})
+  debug = options[:debug]
   raise "Not an array of spectra input." unless (spectra.is_a? Array) && (spectra.all? Spectrum)
 
   # Check if they align in x_units
@@ -920,7 +921,7 @@ def plot_spectra(spectra, options = {})
     outdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
 
-  puts "Ploting to #{outdir}"
+  puts "Ploting to #{outdir}" if debug
   Dir.mkdir outdir unless Dir.exist? outdir
 
   plots = []
