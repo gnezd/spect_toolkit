@@ -1,5 +1,5 @@
 # Script for the processing of micro-PL scann data
-VERSION = '2023Nov17-1'.freeze
+VERSION = '2023Nov25-1'.freeze
 # No longer needed as long you export NMATRX=1
 # require 'nmatrix'
 require 'gsl'
@@ -883,6 +883,30 @@ GPLOTCONTENT
   end
 end
 
+class RbTkCanvas
+  attr_reader :plot, :plotarea, :axisranges, :xrange, :yrange
+  def initialize(rbin)
+    read_tkcanvas(rbin)
+  end
+  def read_tkcanvas(rbin)
+    raw = File.open(rbin, 'r').read
+    str_result = (raw.split /^\s*def[^\n]+\n/)
+    .map {|part| part.chomp "\nend\n"}[1..]
+    @plot = str_result[0]
+    @plotarea = eval(str_result[1].split('return ')[1])
+    @axisranges = eval(str_result[2].split('return ')[1])
+    @xrange = @axisranges[1] - @axisranges[0]
+    @yrange = @axisranges[3] - @axisranges[2]
+  end
+    
+  def plot_to(cv)
+    eval(@plot)
+  end
+end
+  
+# Sparse methods below
+
+# Plot the spectra in an arra
 def plot_spectra(spectra, options = {})
   raise "Not an array of spectra input." unless (spectra.is_a? Array) && (spectra.all? Spectrum)
 
