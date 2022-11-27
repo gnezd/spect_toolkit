@@ -166,6 +166,7 @@ class Scan < Array
       result += self[pt[0]][pt[1]][pt[2]]
       result.last.name = pt.join '-'
     end 
+    result.update_info
     result
   end
 
@@ -201,7 +202,7 @@ class Scan < Array
   end
 
   # Plot a scanning map with respect to the summation function given in the block
-  def plot_map(outdir = nil, options = nil)
+  def plot_map(outdir = nil, options = {})
     # We need a block to calculate the map
     if block_given? 
     if (options&.[](:scale)).is_a?(Integer) && options[:scale] > 0
@@ -245,11 +246,7 @@ class Scan < Array
     gplot = File.open "#{outdir}/#{@name}.gplot", 'w'
     
     # Caution: variable z reused. Previously a counter for building map matrix, now indicating z layer to plot
-    z = 0
-    if options&.[](:z)
-      puts "z set"
-      z = options[:z].to_i
-    end
+    z = nil
 
     case options&.[](:plot_term)
     when nil, 'svg' # Means not indicated or svg
@@ -265,9 +262,12 @@ set terminal png size #{@width * scale * @depth},#{@height * scale}
 set output '#{plot_output}'
 GP_TERM
     when 'tkcanvas-rb'
+      z = (options&.[](:z)).to_i
+      raise "z unspecified" unless z
+      raise "width and height unspecified" unless options[:plot_width] && options[:plot_height]
       plot_output = "#{outdir}/#{@name}-#{z}.rb"
       gplot_terminal =<<GP_TERM
-set terminal tkcanvas ruby
+set terminal tkcanvas ruby size #{options[:plot_width]},#{options[:plot_height]}
 set output '#{plot_output}'
 GP_TERM
     end
@@ -491,6 +491,7 @@ class Spectrum < Array
     result = Spectrum.new
     result.name = @name + '-resampled'
     result.desc += "/#{sample.size} points"
+    result.units = @units
 
     # Frequency value could be increasing or depending on unit
     x_polarity = (self[-1][0] - self[0][0] > 0 ) ? 1 : -1
@@ -531,6 +532,7 @@ class Spectrum < Array
       self_resmpled_v = GSL::Vector.alloc(self.resample(sample).map {|pt| pt[1]})
       input_resmpled_v = GSL::Vector.alloc(input.resample(sample).map {|pt| pt[1]})
       self_resmpled_v * input_resmpled_v.col
+      self_resmpled_v.update_info
     elsif input.is_a? Numeric
       self.each {|pt| pt[1] = pt[1].to_f * input}
     end
@@ -551,6 +553,7 @@ class Spectrum < Array
       self_resampled[i][1] += input_resmpled[i][1]
     end
     self_resampled.name = old_name #preserve name, not to be changed by resample()
+    self_resampled.update_info
     self_resampled
   end
 
@@ -562,6 +565,7 @@ class Spectrum < Array
     self_resampled.each_index do |i|
       self_resampled[i][1] -= input_resmpled[i][1]
     end
+    self_resampled.update_info
     self_resampled
   end
 
@@ -913,7 +917,9 @@ def plot_spectra(spectra, options = {})
 
   # Check if they align in x_units
   x_units = spectra.map {|spectrum| spectrum.units[0]}
-  raise "Some spectra have different units!" unless x_units.all? {|unit| unit == x_units[0]}
+  if !(x_units.all? {|unit| unit == x_units[0]})
+    raise "Some spectra have different units: #{x_units}" 
+  end
 
   if options[:out_dir]
     outdir = options[:out_dir]
@@ -954,7 +960,7 @@ GP_TERM
   when 'tkcanvas-rb'
     plot_output = "#{outdir}/spect-plot.rb"
     gplot_terminal =<<GP_TERM
-set terminal tkcanvas ruby
+set terminal tkcanvas ruby size #{options[:plot_width]},#{options[:plot_height]}
 set output '#{plot_output}'
 GP_TERM
   end
@@ -966,6 +972,7 @@ set xlabel '#{x_units[0]}'
 set ylabel 'intensity (cts)'
 GPLOT_HEADER
   gplot.puts plot_headder
+  gplot.puts options[:plot_style]
   gplot.puts plotline
   gplot.close
   system("gnuplot #{outdir}/gplot")
