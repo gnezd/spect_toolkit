@@ -164,8 +164,8 @@ canvas_map.bind('ButtonRelease') {|clicked|
   points = scan.select_points(selection[0..1] + [0], selection[2..3]+[0])
   
   if sum_or_not.get_value == '1'
-    puts "summing"
-  spects += [(points.map {|pt| scan[pt[0]][pt[1]][0][0]}).reduce(:+)]
+    spects += [(points.map {|pt| scan[pt[0]][pt[1]][0][0]}).reduce(:+)]
+    spects.last.name = "sum-#{selection.join('-')}"
   else
   spects += points.map {|pt| scan[pt[0]][pt[1]][0][0]}
   end
@@ -200,7 +200,7 @@ resize = TkButton.new(map_op_frame){
     canvas_map.width = wnwidth/2; 
     canvas_map.height= wnwidth/2; 
     spectra_canvas.width = wnwidth/2;
-    spectra_canvas.height = tkroot.geometry.split('x')[1].split('+')[0].to_i/2;
+    spectra_canvas.height = wnwidth/2;
     map = RbTkCanvas.new(scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: canvas_map.width, plot_height: canvas_map.height}) {|spects| eval(get_tktext(map_func_text))});
     map.plot_to canvas_map;
     spect_plot = RbTkCanvas.new(plot_spectra(spects, {out_dir: './spect_plot', plot_term: 'tkcanvas-rb', plot_width: spectra_canvas.width, plot_height: spectra_canvas.height, plot_style: "set ylabel top\n"}));

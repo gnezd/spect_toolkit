@@ -631,6 +631,14 @@ class Spectrum < Array
     end
     sum
   end
+  
+  def max()
+    memory = [0.0, 0.0]
+    self.each do |pt|
+      memory = pt if (pt[1] >= memory[1])
+    end
+    memory
+  end
 end
 
 class Alignment
