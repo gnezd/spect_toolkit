@@ -74,7 +74,7 @@ class Scan < Array
     puts "Frame size determined to be #{@framesize}, spectral range being #{@wv[0]} .. #{@wv[-1]}"
     @spectrum_units[0] = 'Wavenumber (cm-1)' if @wv[-1] < @wv[0]
     
-    raise "Number of lines is #{lines.size}, not multiplication of given width (#{@width}) * height (#{@height})* depth (#{@depth})!" unless lines.size == @framesize * (@width * @height * @depth)
+    #raise "Number of lines is #{lines.size}, not multiplication of given width (#{@width}) * height (#{@height})* depth (#{@depth})!" unless lines.size == @framesize * (@width * @height * @depth)
     puts "Got #{lines.size} lines of spectrum to process."
 
     # The real parsing
@@ -903,7 +903,7 @@ class RbTkCanvas
   def read_tkcanvas(rbin)
     raw = File.open(rbin, 'r').read
     str_result = (raw.split /^\s*def[^\n]+\n/)
-    .map {|part| part.chomp "\nend\n"}[1..]
+    .map {|part| part.chomp "\nend\n"}[1..-1]
     @plot = str_result[0]
     @plotarea = eval(str_result[1].split('return ')[1])
     @axisranges = eval(str_result[2].split('return ')[1])

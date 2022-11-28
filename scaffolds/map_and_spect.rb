@@ -81,7 +81,7 @@ scanload = TkButton.new(map_op_frame){
     json = Tk.getOpenFile {title 'Open param'};
     jsonin.text = File.basename(json)
     
-    scan = Scan.new(spe, '2564-1', nil, {param_json: json})
+    scan = Scan.new(spe, 'xxx', nil, {param_json: json})
     scan.load
     
     map = RbTkCanvas.new(scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: canvas_map.width, plot_height: canvas_map.height}) {|spects| eval(get_tktext(map_func_text))});
