@@ -26,6 +26,7 @@ json = ""
 map = nil
 scan = nil
 
+z = 0
 #scan = Scan.new(spe, '2564-1', nil, {param_json: json})
 #scan.load
 #puts scan.inspect
@@ -38,6 +39,7 @@ end
 
 
 # Canvas map
+map_style = ''
 canvas_map = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0)}
 map_func_text = TkText.new(tkroot) {
   grid('row': 1, 'column': 0);
@@ -53,7 +55,8 @@ remap = TkButton.new(map_op_frame){
   command proc {
     map_func = get_tktext(map_func_text);
     puts map_func;
-    map = RbTkCanvas.new(scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: canvas_map.width, plot_height: canvas_map.height}) {|spects| eval(get_tktext(map_func_text))});
+    puts "Style: #{map_style}"
+    map = RbTkCanvas.new(scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: canvas_map.width, plot_height: canvas_map.height, z: z, plot_style: map_style}) {|spects| eval(get_tktext(map_func_text))});
     #plot = scan.plot_map('map', {plot_term: 'tkcanvas-rb'}) {|spect| spect[0].sum}
     map.plot_to canvas_map
   }
@@ -164,10 +167,10 @@ canvas_map.bind('ButtonRelease') {|clicked|
   points = scan.select_points(selection[0..1] + [0], selection[2..3]+[0])
   
   if sum_or_not.get_value == '1'
-    spects += [(points.map {|pt| scan[pt[0]][pt[1]][0][0]}).reduce(:+)]
+    spects += [(points.map {|pt| scan[pt[0]][pt[1]][z][0]}).reduce(:+)]
     spects.last.name = "sum-#{selection.join('-')}"
   else
-  spects += points.map {|pt| scan[pt[0]][pt[1]][0][0]}
+  spects += points.map {|pt| scan[pt[0]][pt[1]][z][0]}
   end
   spect_plot = RbTkCanvas.new(plot_spectra(spects, {out_dir: './spect_plot', plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: spectra_canvas.width, plot_height: spectra_canvas.height}))
   spect_plot.plot_to spectra_canvas
@@ -203,7 +206,7 @@ resize = TkButton.new(map_op_frame){
     spectra_canvas.height = wnwidth/2;
     map = RbTkCanvas.new(scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: canvas_map.width, plot_height: canvas_map.height}) {|spects| eval(get_tktext(map_func_text))});
     map.plot_to canvas_map;
-    spect_plot = RbTkCanvas.new(plot_spectra(spects, {out_dir: './spect_plot', plot_term: 'tkcanvas-rb', plot_width: spectra_canvas.width, plot_height: spectra_canvas.height, plot_style: "set ylabel top\n"}));
+    spect_plot = RbTkCanvas.new(plot_spectra(spects, {out_dir: './spect_plot', plot_term: 'tkcanvas-rb', plot_width: spectra_canvas.width, plot_height: spectra_canvas.height, plot_style: "unset ylabel \n"}));
     spect_plot.plot_to spectra_canvas
 }
 }

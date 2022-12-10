@@ -745,7 +745,18 @@ def plot_spectra_term_test
   puts plot_spectra(scan[0][0][0], {out_dir: './testspectraplot', plot_term: 'tkcanvas-rb'})
 end
 
-plot_spectra_term_test
+def load_scan_from_unbinned_spe
+  spe = './testdata/unbinnedspe/031_1 2022 十二月 09 17_01_47 microPL.spe'
+  json = './testdata/unbinnedspe/Scan_param--170153 microPL.json'
+  scan = Scan.new(spe, 'xxx', nil, {param_json: json})
+  scan.load
+  puts scan[0][0][0][0].class
+  puts scan[0][0][0][0].inspect
+  puts scan[0][0][0][0][0..5]
+end
+
+load_scan_from_unbinned_spe
+#plot_spectra_term_test
 #tkcanvas_plot_test
 #plot_map_style_test
 #load_scan_with_param_json

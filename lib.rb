@@ -30,7 +30,7 @@ class Scan < Array
     @loaded = false
     @spectral_width = 0
     super Array.new(width) {Array.new(height) {Array.new(depth) {Spectrum.new()}}}
-    puts "#{name} loaded from #{path}"
+    puts "#{name} to be loaded from #{path}"
   end
 
   def load(options = {})
@@ -114,9 +114,13 @@ class Scan < Array
     debug = options[:debug]
     puts "loading spe #{@path} with options #{options}."
     puts "Reading spe at #{Time.now}" if debug
+    
+    # BIN to spectrum here
+    options[:bin_to_spect] = true
     @spe = Spe.new @path, @name, options
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
 
+    # Scan mismatch
     raise "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
@@ -683,34 +687,39 @@ class Alignment
 end
 
 class Spe < Array
-  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height,:framesize, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :rois
+  attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height,:framesize, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :rois, :bin_to_spect
   
   def initialize(path, name, options={})
     debug = options[:debug]
     @path = path
     @name = name
     raise "No such file #{@path}" unless File.exist? path
+    @bin_to_spect = options[:bin_to_spect]
     
+    # Sluuurp
     puts "Loading spe file #{@path} at #{Time.now}" if debug
     fin = File.open @path, 'rb'
     raw = fin.read(fin.size).freeze
     fin.close
     puts "Finished reading spe at #{Time.now}" if debug
-    # Starting position of xml part
+
+    # Obtain xml index and unpack binary
     xml_index = raw[678..685].unpack1('Q')
     xml_raw = raw[xml_index..-1]
     binary_data = raw[0x1004..xml_index-1].freeze
     unpacked_counts = binary_data.unpack('S*').freeze
     puts "Unpacked binary has a lenght of: #{unpacked_counts.size}" if debug
-
+    
+    # Starting position of xml part
     @xml = Nokogiri.XML(xml_raw)
     
-    # Data format
+    # Data dimensions
     frame_node = @xml.at_xpath('//xmlns:DataBlock[@type="Frame"]')
     @frames = frame_node.attr('count').to_i
     pixelformat = frame_node.attr('pixelFormat')
     raise "Pixel format #{pixelformat} not supported" unless pixelformat == 'MonochromeUnsigned16'
 
+    # Region of Interest parameters
     @rois = []
     @xml.xpath('//xmlns:SensorMapping').each do |roi|
       @rois.push({
@@ -792,13 +801,12 @@ class Spe < Array
     super unpacked_counts
   end
 
-  def at(frame, roin, x = nil, y = nil)
   # Universal accesor for all regardless of spectrum or image containing Spes
-  raise if (frame == nil) || (roin == nil) # roi and frame must be selected
+  def at(frame, roin)
+  raise "Roi and frame # must be specified" if (frame == nil) || (roin == nil)
 
-    # If x not specified, iterate through all x in this roi
-    # If data_height > 1, likely not a spectrum containing stuff
-    if x == nil && @rois[roin][:data_height] > 1
+    # Unbinned ROI, output array
+    if @rois[roin][:data_height] > 1 && !(@bin_to_spect)
       result = Array.new(@rois[roin][:data_height]) {Array.new(@rois[roin][:data_width]) {0}}
       yi = 0
       while yi < @rois[roin][:data_height]
@@ -806,22 +814,40 @@ class Spe < Array
         yi += 1
       end
       return result.transpose
-    elsif @rois[roin][:data_height] == 1
+
+    # Output Spectrum
+    else
       result = Spectrum.new()
       xi = 0
       roishift = 0
+
       roii = 0
       while roii < roin
         roishift += @rois[roii][:data_width] * @rois[roii][:data_height]
         roii += 1
       end
 
-      while xi < @rois[roin][:data_width]
-        result[xi] = [@wv[xi + roishift], 
-        self[frame * @framesize + roishift + xi]]
-        xi += 1
+      # Binning needed
+      if @bin_to_spect
+        while xi < @rois[roin][:data_width]
+          result[xi] = [@wv[xi + roishift], 0]
+          yi = 0
+          while yi < @rois[roin][:data_height]
+            result[xi][1] += self[frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi]
+            yi += 1
+          end
+          xi += 1
+        end
+      # No binning
+      else
+        while xi < @rois[roin][:data_width]
+          result[xi] = [@wv[xi + roishift], 
+          self[frame * @framesize + roishift + xi]]
+          xi += 1
+        end
       end
       result.name = "#{@name}-#{frame}-roi#{roin}"
+
       result.update_info
       result.units = @spectrum_units
       return result
