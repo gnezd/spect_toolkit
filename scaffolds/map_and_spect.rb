@@ -142,6 +142,7 @@ mouse_down = false
 rect = nil
 canvas_map.bind('ButtonPress') do |clicked|
   mouse_down = true
+  # Make these reusable!!!
   x = (clicked.x.to_f/clicked.widget.width * 1000 - map.plotarea[0]) / (map.plotarea[1] - map.plotarea[0]) * map.xrange + map.axisranges[0] +0.5
   y = (map.plotarea[3] - clicked.y.to_f/clicked.widget.height * 1000) / (map.plotarea[3] - map.plotarea[2]) * map.yrange + map.axisranges[2] +0.5
   selection[0] = x.to_i;
