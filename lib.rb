@@ -1,5 +1,5 @@
 # Script for the processing of micro-PL scann data
-VERSION = '2023Nov25-1'.freeze
+VERSION = '2022Dec17-1'.freeze
 # No longer needed as long you export NMATRX=1
 # require 'nmatrix'
 require 'gsl'
@@ -258,12 +258,14 @@ class Scan < Array
       gplot_terminal =<<GP_TERM
 set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone
 set output '#{plot_output}'
+set title '#{@name.gsub('_','\_')}'
 GP_TERM
     when 'png'
       plot_output = "#{outdir}/#{@name}.png"
       gplot_terminal =<<GP_TERM
 set terminal png size #{@width * scale * @depth},#{@height * scale}
 set output '#{plot_output}'
+set title '#{@name.gsub('_','\_')}'
 GP_TERM
     when 'tkcanvas-rb'
       z = (options&.[](:z)).to_i
@@ -273,6 +275,7 @@ GP_TERM
       gplot_terminal =<<GP_TERM
 set terminal tkcanvas ruby size #{options[:plot_width]},#{options[:plot_height]}
 set output '#{plot_output}'
+set title '#{@name}'
 GP_TERM
     end
 
@@ -289,7 +292,7 @@ unset xtics
 unset ytics
 set xrange[-0.5:#{@width-0.5}]
 set yrange[-0.5:#{@height-0.5}]
-set title '#{@name.gsub('_','\_')}'
+#set title '#{@name.gsub('_','\_')}'
 set palette cubehelix
 set cbtics scale 0
 unset grid
@@ -312,12 +315,12 @@ GPLOT_HEAD
       
     else
       # 1 sheet plotting
-      gplot.puts "set title '#{@name.gsub('_', '\\_')}'"
+      #gplot.puts "set title '#{@name.gsub('_', '\\_')}'"
       gplot.puts "plot '#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
     end
 
     gplot.close
-    `gnuplot #{outdir}/#{@name}.gplot`
+    `gnuplot '#{outdir}/#{@name}.gplot'`
     return plot_output
   
   else # No block given
