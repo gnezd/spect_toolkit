@@ -83,22 +83,22 @@ class MappingPlotter
     @spect_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 1, 'rowspan': 2)}
 
     # Terminal
-term_frame = TkFrame.new(tkroot) {grid('column': 1, 'row': 2)}
-term_output = TkText.new(term_frame) {grid('row': 0, 'column': 0); height '5'}
-cmd_frame = TkFrame.new(term_frame) {grid('row':1, 'column': 0)}
-cmd_input = TkText.new(cmd_frame) {grid('row': 0, 'column': 0, 'rowspan': 2); height '3'}
-cmd_input.bind('Control-KeyPress-r', proc {exec_command(cmd_input, term_output)})
-cmd_input.bind('Control-KeyPress-c', proc {term_output.delete('1.0', 'end')})
+    @term_frame = TkFrame.new(tkroot) {grid('column': 1, 'row': 2)}
+    @term_output = TkText.new(@term_frame) {grid('row': 0, 'column': 0); height '5'}
+    @cmd_frame = TkFrame.new(@term_frame) {grid('row':1, 'column': 0)}
+    @cmd_input = TkText.new(@cmd_frame) {grid('row': 0, 'column': 0, 'rowspan': 2); height '3'}
+    @cmd_input.bind('Control-KeyPress-r', proc {exec_command})
+    @cmd_input.bind('Control-KeyPress-c', proc {@term_output.delete('1.0', 'end')})
 
 
-run = TkButton.new(cmd_frame) {
+run = TkButton.new(@cmd_frame) {
   text 'Run';
   grid('row': 0, 'column': 1)
   command {
     exec_command(cmd_input, term_output)
   }
 }
-clear = TkButton.new(cmd_frame) {
+clear = TkButton.new(@cmd_frame) {
   text 'Clear'
   grid('row':1, 'column': 1)
   command {
@@ -145,6 +145,16 @@ clear = TkButton.new(cmd_frame) {
     @map = RbTkCanvas.new(@scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: @map_canvas.width, plot_height: @map_canvas.height}) {|spects| eval @mapping_func.get('0.0', 'end')});
     @map.plot_to @map_canvas
 
+  end
+
+
+  def exec_command
+      cmd = @cmd_input.get('0.0', 'end')
+      cmd.chomp
+      #result = TOPLEVEL_BINDING.eval(cmd).to_s
+      result = eval(cmd).to_s
+      @term_output.insert('end', result)
+      @term_output.insert('end', "\n-----\n")
   end
 end
 
