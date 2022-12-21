@@ -1,6 +1,12 @@
 require 'tk'
 require './lib'
 
+# Resizable Tk canvas
+class RCanvas < TkCanvas
+  def resize
+  end
+end
+
 class MappingPlotter
 
   def initialize(tkroot)
@@ -18,49 +24,53 @@ class MappingPlotter
     @baseline = nil
     @spect_style = "unset ylabel\n"
 
-
     # Map widget
-    @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0)}
+    @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew'); background('red')}
+    @map_canvas.bind("Configure") {
+      geom = @map_canvas.winfo_geometry.split('+')[0].split('x').map {|n| n.to_i}
+      @map_canvas.width = geom[0]-2 # Ugly fix, Sth. better is needed.
+      @map_canvas.height = geom[1]-2
+    }
     @mapping_func = TkText.new(tkroot) {
-    grid('row': 1, 'column': 0);
+    grid('row': 1, 'column': 0, 'sticky': 'ew');
     height '1';
     }
     @mapping_func.insert('0.0', 'spects[0].sum')
 
     # Map operations
     @map_op_frame = TkFrame.new(tkroot) {
-      grid('row':2, 'column': 0);
+      grid('row':2, 'column': 0, 'sticky': 'ew');
     }
     # remap
     @remap_butn = TkButton.new(@map_op_frame){
-      grid('row':0, 'column': 0);
+      grid('row':0, 'column': 0, 'sticky': 'ew');
       text 'remap';
     }
     @remap_butn.command {remap}
     
     @sum_or_pick = TkCheckButton.new(@map_op_frame){
-      grid('row':0, 'column': 1);
+      grid('row':0, 'column': 1, 'sticky': 'ew');
       text 'sum or not'
     }
 
     @spepath = TkLabel.new(@map_op_frame){
-      grid('row': 1, 'column': 0);
+      grid('row': 1, 'column': 0, 'sticky': 'ew');
     }
 
     @jsonpath = TkLabel.new(@map_op_frame){
-      grid('row': 2, 'column': 0);
+      grid('row': 2, 'column': 0, 'sticky': 'ew');
     }
     
     @spect_unit = TkFrame.new(@map_op_frame){
-      grid('row': 1, 'column': 1)
+      grid('row': 1, 'column': 1, 'sticky': 'ew')
     }
     TkLabel.new(@spect_unit){
       text 'Spectral unit: ';
-      grid('row':0, 'column': 0)
+      grid('row':0, 'column': 0, 'sticky': 'ew')
     }
     @unit_nm = TkRadiobutton.new(@spect_unit){
       text 'nm';
-      grid('row':0, 'column': 1)
+      grid('row':0, 'column': 1, 'sticky': 'ew')
     }
 
     @unit_wavenumber = TkRadiobutton.new(@spect_unit){
@@ -69,38 +79,41 @@ class MappingPlotter
     }
 
     @load_scan = TkButton.new(@map_op_frame){
-      grid('row': 2, 'column': 1);
+      grid('row': 2, 'column': 1, 'sticky': 'ew');
       text 'open scan';
     }
     @load_scan.command {open_scan}
     # TODO: select z construction when opening
 
     @z_frame = TkFrame.new(@map_op_frame){
-      grid('row': 0, 'column':2)
+      grid('row': 0, 'column':2, 'sticky': 'ew')
     }
 
     # Spect_canvas
-    @spect_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 1, 'rowspan': 2)}
+    @spect_canvas = TkCanvas.new(tkroot) {
+      grid('row': 0, 'column': 1, 'rowspan': 2, 'sticky': 'nsew');
+      background('#FF5500')
+    }
 
     # Terminal
-    @term_frame = TkFrame.new(tkroot) {grid('column': 1, 'row': 2)}
-    @term_output = TkText.new(@term_frame) {grid('row': 0, 'column': 0); height '5'}
-    @cmd_frame = TkFrame.new(@term_frame) {grid('row':1, 'column': 0)}
-    @cmd_input = TkText.new(@cmd_frame) {grid('row': 0, 'column': 0, 'rowspan': 2); height '3'}
+    @term_frame = TkFrame.new(tkroot) {grid('column': 1, 'row': 2, 'sticky': 'ew'); borderwidth(5)}
+    @term_output = TkText.new(@term_frame) {grid('row': 0, 'column': 0, 'sticky': 'ew'); height '5'}
+    @cmd_frame = TkFrame.new(@term_frame) {grid('row':1, 'column': 0, 'sticky': 'ew')}
+    @cmd_input = TkText.new(@cmd_frame) {grid('row': 0, 'column': 0, 'rowspan': 2, 'sticky': 'ew'); height '3'}
     @cmd_input.bind('Control-KeyPress-r', proc {exec_command})
     @cmd_input.bind('Control-KeyPress-c', proc {@term_output.delete('1.0', 'end')})
 
 
 run = TkButton.new(@cmd_frame) {
   text 'Run';
-  grid('row': 0, 'column': 1)
+  grid('row': 0, 'column': 1, 'sticky': 'ew')
   command {
     exec_command(cmd_input, term_output)
   }
 }
 clear = TkButton.new(@cmd_frame) {
   text 'Clear'
-  grid('row':1, 'column': 1)
+  grid('row':1, 'column': 1, 'sticky': 'ew')
   command {
     term_output.delete('1.0', 'end')
   }
@@ -111,8 +124,8 @@ clear = TkButton.new(@cmd_frame) {
 
   def remap
     map_func = @mapping_func.get('0.0', 'end')
-    puts map_func if debug
-    puts "Style: #{@map_style}" if debug
+    #puts map_func if debug
+    #puts "Style: #{@map_style}" if debug
     @map = RbTkCanvas.new(@scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: @map_canvas.width, plot_height: @map_canvas.height, z: @z, plot_style: @map_style}) {|spects| eval@mapping_func.get('0.0', 'end') });
     @map.plot_to @map_canvas
   end
@@ -160,4 +173,8 @@ end
 
 tkroot = TkRoot.new {title 'Spectral mapping plotter'}
 plotter = MappingPlotter.new(tkroot)
+
+# Resizing behaviour
+TkGrid.columnconfigure(tkroot, 'all', :weight => 1)
+TkGrid.rowconfigure(tkroot, 0, :weight => 1)
 tkroot.mainloop
