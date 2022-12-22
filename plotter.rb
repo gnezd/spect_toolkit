@@ -31,6 +31,23 @@ class MappingPlotter
       @map_canvas.width = geom[0]-2 # Ugly fix, Sth. better is needed.
       @map_canvas.height = geom[1]-2
     }
+
+    # Selection state and binding
+    @map_clicked = false
+    @map_selctions = [[0,0,0,0]]
+    @map_rects = []
+    @map_canvas.bind("Button-1") {|e|
+      selection_on_map(e, :mousedown)
+    }
+    @map_canvas.bind("Motion") do |e| 
+      if @map_clicked
+        selection_on_map(e, :dragging)
+      end
+    end
+    @map_canvas.bind("ButtonRelease-1") {|e|
+      selection_on_map(e, :mouseup)
+    }
+
     @mapping_func = TkText.new(tkroot) {
     grid('row': 1, 'column': 0, 'sticky': 'ew');
     height '1';
@@ -104,20 +121,20 @@ class MappingPlotter
     @cmd_input.bind('Control-KeyPress-c', proc {@term_output.delete('1.0', 'end')})
 
 
-run = TkButton.new(@cmd_frame) {
-  text 'Run';
-  grid('row': 0, 'column': 1, 'sticky': 'ew')
-  command {
-    exec_command(cmd_input, term_output)
-  }
-}
-clear = TkButton.new(@cmd_frame) {
-  text 'Clear'
-  grid('row':1, 'column': 1, 'sticky': 'ew')
-  command {
-    term_output.delete('1.0', 'end')
-  }
-}
+    run = TkButton.new(@cmd_frame) {
+      text 'Run';
+      grid('row': 0, 'column': 1, 'sticky': 'ew')
+      command {
+        exec_command(cmd_input, term_output)
+      }
+    }
+    clear = TkButton.new(@cmd_frame) {
+      text 'Clear'
+      grid('row':1, 'column': 1, 'sticky': 'ew')
+      command {
+        term_output.delete('1.0', 'end')
+      }
+    }
     
     
   end
@@ -130,7 +147,32 @@ clear = TkButton.new(@cmd_frame) {
     @map.plot_to @map_canvas
   end
 
-  def selection_on_map
+  # Plot spects
+  # Invoke color style injection
+  def plot_spectra
+  end
+
+  # Calculate and update spects
+  def accumulate_spect
+    puts @map_selctions.last.join '-'
+  end
+
+  # Update selection square
+  def selection_on_map(event, state) #Is state somewhat embedded in event? This for now.
+    case state
+    when :mousedown
+      @map_clicked = true
+      puts @map_selctions.last
+      @map_selctions.last[0..1] = [event.x, event.y]
+      rect = TkcRectangle.new(@map_canvas, event.x, event.y, event.x, event.y, outline: 'black')
+      @map_rects.push(rect)
+    when :dragging
+      @map_rects.last.coords(@map_selctions.last[0], @map_selctions.last[1], event.x,event.y)
+    when :mouseup
+      @map_clicked = false
+      @map_selctions.last[2..3]=[event.x, event.y]
+      accumulate_spect
+    end
   end
 
   def selection_on_spect
