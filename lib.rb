@@ -259,6 +259,8 @@ class Scan < Array
 set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone
 set output '#{plot_output}'
 set title '#{@name.gsub('_','\_')}'
+unset xtics
+unset ytics
 GP_TERM
     when 'png'
       plot_output = "#{outdir}/#{@name}.png"
@@ -266,6 +268,8 @@ GP_TERM
 set terminal png size #{@width * scale * @depth},#{@height * scale}
 set output '#{plot_output}'
 set title '#{@name.gsub('_','\_')}'
+unset xtics
+unset ytics
 GP_TERM
     when 'tkcanvas-rb'
       z = (options&.[](:z)).to_i
@@ -288,8 +292,6 @@ gplot_content =<<GPLOT_HEAD
 set size ratio -1
 set border 0
 unset key
-unset xtics
-unset ytics
 set xrange[-0.5:#{@width-0.5}]
 set yrange[-0.5:#{@height-0.5}]
 #set title '#{@name.gsub('_','\_')}'
@@ -968,10 +970,16 @@ def plot_spectra(spectra, options = {})
   Dir.mkdir outdir unless Dir.exist? outdir
 
   plots = []
-   plots += options['plotline_inject'] if options['plotline_inject']
+  plots += options[:plotline_inject] if options[:plotline_inject]
   spectra.each_with_index do |spectrum, i|
     spectrum.write_tsv(outdir + '/' + spectrum.name + '.tsv')
-    plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1} t '#{spectrum.name.gsub('_', '\_')}'"
+    # Ugly fix
+    # Should actually be filtering if enhanced is used
+    if options[:plot_term] == 'tkcanvas-rb'
+      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1} t '#{spectrum.name}'"
+    else
+      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1} t '#{spectrum.name.gsub('_', '\_')}'"
+    end
   end
   plotline = "plot " + plots.join(", \\\n")
   
@@ -986,12 +994,6 @@ GP_TERM
     plot_output = "#{outdir}/spect-plot.png"
     gplot_terminal =<<GP_TERM
 set terminal png size 800,600
-set output '#{plot_output}'
-GP_TERM
-  when 'svg'
-    plot_output = "#{outdir}/spect-plot.svg"
-    gplot_terminal =<<GP_TERM
-set terminal svg size 800,600 mouse standalone enhanced
 set output '#{plot_output}'
 GP_TERM
   when 'tkcanvas-rb'

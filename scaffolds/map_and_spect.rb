@@ -25,6 +25,7 @@ spe = ""
 json = ""
 map = nil
 scan = nil
+spectral_unit = 'nm'
 
 z = 0
 #scan = Scan.new(spe, '2564-1', nil, {param_json: json})
@@ -85,7 +86,7 @@ scanload = TkButton.new(map_op_frame){
     jsonin.text = File.basename(json)
     
     scan = Scan.new(spe, 'xxx', nil, {param_json: json})
-    scan.load
+    scan.load({spectral_unit: spectral_unit})
     
     map = RbTkCanvas.new(scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: canvas_map.width, plot_height: canvas_map.height}) {|spects| eval(get_tktext(map_func_text))});
     map.plot_to canvas_map
@@ -171,7 +172,7 @@ canvas_map.bind('ButtonRelease') {|clicked|
     spects += [(points.map {|pt| scan[pt[0]][pt[1]][z][0]}).reduce(:+)]
     spects.last.name = "sum-#{selection.join('-')}"
   else
-  spects += points.map {|pt| scan[pt[0]][pt[1]][z][0]}
+    spects += points.map {|pt| scan[pt[0]][pt[1]][z][0]}
   end
   spect_plot = RbTkCanvas.new(plot_spectra(spects, {out_dir: './spect_plot', plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: spectra_canvas.width, plot_height: spectra_canvas.height}))
   spect_plot.plot_to spectra_canvas

@@ -25,7 +25,7 @@ class MappingPlotter
     @spect_style = "unset ylabel\n"
 
     # Map widget
-    @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew'); background('red')}
+    @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew')}
     @map_canvas.bind("Configure") {
       geom = @map_canvas.winfo_geometry.split('+')[0].split('x').map {|n| n.to_i}
       @map_canvas.width = geom[0]-2 # Ugly fix, Sth. better is needed.
@@ -34,8 +34,9 @@ class MappingPlotter
 
     # Selection state and binding
     @map_clicked = false
-    @map_selctions = [[0,0,0,0]]
+    @map_selections = []
     @map_rects = []
+    @rect_colors = ['red', 'orange', 'yellow', 'green', 'blue', 'violet']
     @map_canvas.bind("Button-1") {|e|
       selection_on_map(e, :mousedown)
     }
@@ -111,6 +112,8 @@ class MappingPlotter
       grid('row': 0, 'column': 1, 'rowspan': 2, 'sticky': 'nsew');
       background('#FF5500')
     }
+    @spect_plot = nil
+    @spect_style = "unset ylabel\n"
 
     # Terminal
     @term_frame = TkFrame.new(tkroot) {grid('column': 1, 'row': 2, 'sticky': 'ew'); borderwidth(5)}
@@ -141,20 +144,41 @@ class MappingPlotter
 
   def remap
     map_func = @mapping_func.get('0.0', 'end')
-    #puts map_func if debug
-    #puts "Style: #{@map_style}" if debug
-    @map = RbTkCanvas.new(@scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: @map_canvas.width, plot_height: @map_canvas.height, z: @z, plot_style: @map_style}) {|spects| eval@mapping_func.get('0.0', 'end') });
+    @map = RbTkCanvas.new(@scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: @map_canvas.width, plot_height: @map_canvas.height, z: @z, plot_style: @map_style}) {|spects| eval(map_func) });
     @map.plot_to @map_canvas
   end
 
   # Plot spects
   # Invoke color style injection
-  def plot_spectra
+  def update_spectra
   end
 
   # Calculate and update spects
   def accumulate_spect
-    puts @map_selctions.last.join '-'
+    # Coordinate conversion
+    # Extract to reuse with spect selection?
+    # RCanvs will then own its RbTkCanvas?
+    map_selection = @map_selections.last
+    selection_on_scan = []
+    selection_on_scan[0] = ((map_selection[0].to_f / @map_canvas.width * 1000 - @map.plotarea[0]) / (@map.plotarea[1] - @map.plotarea[0]) * (@map.xrange + @map.axisranges[0]) + 0.5).to_i
+    selection_on_scan[1] = ((@map.plotarea[3] - map_selection[1].to_f / @map_canvas.height * 1000) / (@map.plotarea[3] - @map.plotarea[2]) * @map.yrange + @map.axisranges[2] + 0.5).to_i
+    selection_on_scan[2] = ((map_selection[2].to_f / @map_canvas.width * 1000 - @map.plotarea[0]) / (@map.plotarea[1] - @map.plotarea[0]) * (@map.xrange + @map.axisranges[0]) + 0.5).to_i
+    selection_on_scan[3] = ((@map.plotarea[3] - map_selection[3].to_f / @map_canvas.height * 1000) / (@map.plotarea[3] - @map.plotarea[2]) * @map.yrange + @map.axisranges[2] + 0.5).to_i
+    #puts selection_on_scan.join '-'
+
+    points = @scan.select_points(selection_on_scan[0..1]+ [@z], selection_on_scan[2..3]+ [@z])
+    if @sum_or_pick.get_value == '1'
+      @spects += [(points.map {|pt| @scan[pt[0]][pt[1]][@z][0]}).reduce(:+)]
+      @spects.last.name = "sum-#{selection_on_scan.join('-')}"
+    else
+      @spects += points.map {|pt| @scan[pt[0]][pt[1]][@z][0]}
+      # Check: spectrum naming?
+    end
+
+    # Inject coloring here!!
+    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: @spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height}))
+    @spect_plot.plot_to @spect_canvas
+
   end
 
   # Update selection square
@@ -162,15 +186,14 @@ class MappingPlotter
     case state
     when :mousedown
       @map_clicked = true
-      puts @map_selctions.last
-      @map_selctions.last[0..1] = [event.x, event.y]
-      rect = TkcRectangle.new(@map_canvas, event.x, event.y, event.x, event.y, outline: 'black')
+      @map_selections.push [event.x, event.y, 0, 0]
+      rect = TkcRectangle.new(@map_canvas, event.x, event.y, event.x, event.y, outline: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
       @map_rects.push(rect)
     when :dragging
-      @map_rects.last.coords(@map_selctions.last[0], @map_selctions.last[1], event.x,event.y)
+      @map_rects.last.coords(@map_selections.last[0], @map_selections.last[1], event.x,event.y)
     when :mouseup
       @map_clicked = false
-      @map_selctions.last[2..3]=[event.x, event.y]
+      @map_selections.last[2..3]=[event.x, event.y]
       accumulate_spect
     end
   end
@@ -197,9 +220,7 @@ class MappingPlotter
     @scan.load
     # Generate z selection radiobuttons in @z_frame here
     
-    @map = RbTkCanvas.new(@scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: @map_canvas.width, plot_height: @map_canvas.height}) {|spects| eval @mapping_func.get('0.0', 'end')});
-    @map.plot_to @map_canvas
-
+    remap
   end
 
 
