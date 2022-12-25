@@ -927,7 +927,7 @@ GPLOTCONTENT
 end
 
 class RbTkCanvas
-  attr_reader :plot, :plotarea, :axisranges, :xrange, :yrange
+  attr_reader :plot, :plotarea, :axisranges, :xrange, :yrange, :target_cv
   def initialize(rbin)
     read_tkcanvas(rbin)
   end
@@ -944,6 +944,7 @@ class RbTkCanvas
     
   def plot_to(cv)
     eval(@plot)
+    @target_cv = cv
   end
 end
   

@@ -160,9 +160,9 @@ class MappingPlotter
     # RCanvs will then own its RbTkCanvas?
     map_selection = @map_selections.last
     selection_on_scan = []
-    selection_on_scan[0] = ((map_selection[0].to_f / @map_canvas.width * 1000 - @map.plotarea[0]) / (@map.plotarea[1] - @map.plotarea[0]) * (@map.xrange + @map.axisranges[0]) + 0.5).to_i
+    selection_on_scan[0] = ((map_selection[0].to_f / @map_canvas.width * 1000 - @map.plotarea[0]) / (@map.plotarea[1] - @map.plotarea[0]) * @map.xrange + @map.axisranges[0] + 0.5).to_i
     selection_on_scan[1] = ((@map.plotarea[3] - map_selection[1].to_f / @map_canvas.height * 1000) / (@map.plotarea[3] - @map.plotarea[2]) * @map.yrange + @map.axisranges[2] + 0.5).to_i
-    selection_on_scan[2] = ((map_selection[2].to_f / @map_canvas.width * 1000 - @map.plotarea[0]) / (@map.plotarea[1] - @map.plotarea[0]) * (@map.xrange + @map.axisranges[0]) + 0.5).to_i
+    selection_on_scan[2] = ((map_selection[2].to_f / @map_canvas.width * 1000 - @map.plotarea[0]) / (@map.plotarea[1] - @map.plotarea[0]) * @map.xrange + @map.axisranges[0] + 0.5).to_i
     selection_on_scan[3] = ((@map.plotarea[3] - map_selection[3].to_f / @map_canvas.height * 1000) / (@map.plotarea[3] - @map.plotarea[2]) * @map.yrange + @map.axisranges[2] + 0.5).to_i
     #puts selection_on_scan.join '-'
 
@@ -180,6 +180,7 @@ class MappingPlotter
     @spect_plot.plot_to @spect_canvas
 
   end
+
 
   # Update selection square
   def selection_on_map(event, state) #Is state somewhat embedded in event? This for now.
