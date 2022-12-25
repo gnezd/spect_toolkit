@@ -259,6 +259,8 @@ class Scan < Array
 set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone
 set output '#{plot_output}'
 set title '#{@name.gsub('_','\_')}'
+unset xtics
+unset ytics
 GP_TERM
     when 'png'
       plot_output = "#{outdir}/#{@name}.png"
@@ -266,6 +268,8 @@ GP_TERM
 set terminal png size #{@width * scale * @depth},#{@height * scale}
 set output '#{plot_output}'
 set title '#{@name.gsub('_','\_')}'
+unset xtics
+unset ytics
 GP_TERM
     when 'tkcanvas-rb'
       z = (options&.[](:z)).to_i
@@ -288,8 +292,6 @@ gplot_content =<<GPLOT_HEAD
 set size ratio -1
 set border 0
 unset key
-unset xtics
-unset ytics
 set xrange[-0.5:#{@width-0.5}]
 set yrange[-0.5:#{@height-0.5}]
 #set title '#{@name.gsub('_','\_')}'
@@ -925,7 +927,7 @@ GPLOTCONTENT
 end
 
 class RbTkCanvas
-  attr_reader :plot, :plotarea, :axisranges, :xrange, :yrange
+  attr_reader :plot, :plotarea, :axisranges, :xrange, :yrange, :target_cv
   def initialize(rbin)
     read_tkcanvas(rbin)
   end
@@ -942,6 +944,17 @@ class RbTkCanvas
     
   def plot_to(cv)
     eval(@plot)
+    @target_cv = cv
+  end
+
+  # Convert canvas selection to plot coordinates
+  def canvas_coord_to_plot_coord(selection_on_canvas)
+    plotarea_w = @plotarea[1] - @plotarea[0]
+    plotarea_h = @plotarea[3] - @plotarea[2]
+    x = (selection_on_canvas[0].to_f / @target_cv.width * 1000 - @plotarea[0]) / plotarea_w * @xrange + @axisranges[0]
+    y = (@plotarea[3] - selection_on_canvas[1].to_f / @target_cv.height * 1000) / plotarea_h * @yrange + @axisranges[2]
+
+    [x, y]
   end
 end
   
@@ -968,10 +981,19 @@ def plot_spectra(spectra, options = {})
   Dir.mkdir outdir unless Dir.exist? outdir
 
   plots = []
-   plots += options['plotline_inject'] if options['plotline_inject']
+  plots += options[:plotline_inject] if options[:plotline_inject]
   spectra.each_with_index do |spectrum, i|
     spectrum.write_tsv(outdir + '/' + spectrum.name + '.tsv')
-    plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1} t '#{spectrum.name.gsub('_', '\_')}'"
+    linestyle = "lt #{i+1}"
+    linestyle = options[:linestyle][i] if options[:linestyle]
+    # Ugly fix
+    # Should actually be filtering if enhanced is used
+    # reversing raman plot here aswell
+    if options[:plot_term] == 'tkcanvas-rb'
+      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name}'"
+    else
+      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name.gsub('_', '\_')}'"
+    end
   end
   plotline = "plot " + plots.join(", \\\n")
   
@@ -986,12 +1008,6 @@ GP_TERM
     plot_output = "#{outdir}/spect-plot.png"
     gplot_terminal =<<GP_TERM
 set terminal png size 800,600
-set output '#{plot_output}'
-GP_TERM
-  when 'svg'
-    plot_output = "#{outdir}/spect-plot.svg"
-    gplot_terminal =<<GP_TERM
-set terminal svg size 800,600 mouse standalone enhanced
 set output '#{plot_output}'
 GP_TERM
   when 'tkcanvas-rb'
@@ -1012,7 +1028,7 @@ GPLOT_HEADER
   gplot.puts options[:plot_style]
   gplot.puts plotline
   gplot.close
-  system("gnuplot #{outdir}/gplot")
+  `gnuplot '#{outdir}/gplot'`
   return plot_output
 end
 
