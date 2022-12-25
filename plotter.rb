@@ -14,6 +14,7 @@ class MappingPlotter
     @spe_path = ""
     @json_path = ""
     @scan = nil
+    @spectral_unit = ''
 
     # Mappings
     @map = nil
@@ -23,6 +24,7 @@ class MappingPlotter
     @spects = []
     @baseline = nil
     @spect_style = "unset ylabel\n"
+    @linestyle = []
 
     # Map widget
     @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew')}
@@ -88,12 +90,34 @@ class MappingPlotter
     }
     @unit_nm = TkRadiobutton.new(@spect_unit){
       text 'nm';
-      grid('row':0, 'column': 1, 'sticky': 'ew')
+      grid('row':0, 'column': 1, 'sticky': 'ew');
+      variable @spectral_unit;
+      value 'nm'
+    }
+    @unit_nm.command {
+      @unit_wavenumber.deselect;
+      @spectral_unit = 'nm'
     }
 
     @unit_wavenumber = TkRadiobutton.new(@spect_unit){
       text 'wavenumber';
-      grid('row':0, 'column': 2)
+      grid('row':0, 'column': 2);
+      variable @spectral_unit;
+      value 'wavenumber'
+    }
+    @unit_wavenumber.command {
+      @unit_nm.deselect;
+      @spectral_unit = 'wavenumber'
+    }
+    
+    @unit_ev = TkRadiobutton.new(@spect_unit){
+      text 'eV';
+      grid('row':0, 'column': 3);
+      variable @spectral_unit;
+      value 'eV'
+    }
+    @unit_ev.command {
+      @spectral_unit = 'eV'
     }
 
     @load_scan = TkButton.new(@map_op_frame){
@@ -109,11 +133,51 @@ class MappingPlotter
 
     # Spect_canvas
     @spect_canvas = TkCanvas.new(tkroot) {
-      grid('row': 0, 'column': 1, 'rowspan': 2, 'sticky': 'nsew');
-      background('#FF5500')
+      grid('row': 0, 'column': 1, 'sticky': 'nsew')
     }
+    # Spect operations
+    @spect_op_frame = TkFrame.new(tkroot) {
+      grid(row: 1, column: 1, sticky: 'ew')
+    }
+    @spect_range_mode = TkCheckButton.new(@spect_op_frame) {
+      grid(row: 0, column: 0)
+      text 'pick range'
+    }
+    @spect_pt_mode = TkCheckButton.new(@spect_op_frame) {
+      grid(row: 0, column: 1)
+      text 'pick points'
+    }
+    @spect_clear = TkButton.new(@spect_op_frame) {
+      grid(row: 0, column: 2)
+      text 'clear spectra'
+    }
+    @spect_clear.command {clear_spectra}
+
+    # Selection state and binding
+    @spect_clicked = nil
+    @spect_selection = [nil, nil]
+    @spect_points = []
+    @spect_canvas.bind("Configure") {
+      geom = @spect_canvas.winfo_geometry.split('+')[0].split('x').map {|n| n.to_i}
+      @spect_canvas.width = geom[0]-2 # Ugly fix, Sth. better is needed.
+      @spect_canvas.height = geom[1]-2
+    }
+    @spect_canvas.bind("Button-1") {|e|
+      mouse_on_spect(e, :mouseldown)
+    }
+    @spect_canvas.bind("Button-3") {|e|
+      mouse_on_spect(e, :mouserdown)
+    }
+    @spect_canvas.bind("Motion") {|e|
+      if @spect_clicked
+        mouse_on_spect(e, :dragging)
+      end
+    }
+    @spect_canvas.bind("ButtonRelease-1") {|e|
+      mouse_on_spect(e, :mouseup)
+    }
+
     @spect_plot = nil
-    @spect_style = "unset ylabel\n"
 
     # Terminal
     @term_frame = TkFrame.new(tkroot) {grid('column': 1, 'row': 2, 'sticky': 'ew'); borderwidth(5)}
@@ -121,23 +185,19 @@ class MappingPlotter
     @cmd_frame = TkFrame.new(@term_frame) {grid('row':1, 'column': 0, 'sticky': 'ew')}
     @cmd_input = TkText.new(@cmd_frame) {grid('row': 0, 'column': 0, 'rowspan': 2, 'sticky': 'ew'); height '3'}
     @cmd_input.bind('Control-KeyPress-r', proc {exec_command})
-    @cmd_input.bind('Control-KeyPress-c', proc {@term_output.delete('1.0', 'end')})
+    @cmd_input.bind('Control-KeyPress-c', proc {clear_terminal_output})
 
 
     run = TkButton.new(@cmd_frame) {
       text 'Run';
       grid('row': 0, 'column': 1, 'sticky': 'ew')
-      command {
-        exec_command(cmd_input, term_output)
-      }
     }
+    run.command {exec_command}
     clear = TkButton.new(@cmd_frame) {
-      text 'Clear'
+      text 'Clear';
       grid('row':1, 'column': 1, 'sticky': 'ew')
-      command {
-        term_output.delete('1.0', 'end')
-      }
     }
+    clear.command {clear_terminal_output}
     
     
   end
@@ -153,30 +213,45 @@ class MappingPlotter
   def update_spectra
   end
 
+  def clear_spectra
+    @spects = []
+    @map_selections = []
+    @map_rects.each do |rect|
+      rect.delete
+      rect.destroy
+    end
+    @map_rects = []
+    @linestyle = []
+  end
+
   # Calculate and update spects
   def accumulate_spect
     # Coordinate conversion
     # Extract to reuse with spect selection?
     # RCanvs will then own its RbTkCanvas?
-    map_selection = @map_selections.last
-    selection_on_scan = []
-    selection_on_scan[0] = ((map_selection[0].to_f / @map_canvas.width * 1000 - @map.plotarea[0]) / (@map.plotarea[1] - @map.plotarea[0]) * @map.xrange + @map.axisranges[0] + 0.5).to_i
-    selection_on_scan[1] = ((@map.plotarea[3] - map_selection[1].to_f / @map_canvas.height * 1000) / (@map.plotarea[3] - @map.plotarea[2]) * @map.yrange + @map.axisranges[2] + 0.5).to_i
-    selection_on_scan[2] = ((map_selection[2].to_f / @map_canvas.width * 1000 - @map.plotarea[0]) / (@map.plotarea[1] - @map.plotarea[0]) * @map.xrange + @map.axisranges[0] + 0.5).to_i
-    selection_on_scan[3] = ((@map.plotarea[3] - map_selection[3].to_f / @map_canvas.height * 1000) / (@map.plotarea[3] - @map.plotarea[2]) * @map.yrange + @map.axisranges[2] + 0.5).to_i
-    #puts selection_on_scan.join '-'
-
+    selection_on_scan = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
+    selection_on_scan.map! {|e| (e+0.5).to_i}
+    puts selection_on_scan.join '-'
     points = @scan.select_points(selection_on_scan[0..1]+ [@z], selection_on_scan[2..3]+ [@z])
     if @sum_or_pick.get_value == '1'
       @spects += [(points.map {|pt| @scan[pt[0]][pt[1]][@z][0]}).reduce(:+)]
       @spects.last.name = "sum-#{selection_on_scan.join('-')}"
+      @linestyle.push "lt #{@map_selections.size}"
     else
-      @spects += points.map {|pt| @scan[pt[0]][pt[1]][@z][0]}
+      newspects = points.map {|pt| @scan[pt[0]][pt[1]][@z][0]}
+      @spects += newspects
+      @linestyle += ["lt #{@map_selections.size}"] * newspects.size
       # Check: spectrum naming?
     end
 
+    raise "@linestyle size and @spects size mismatch" unless @linestyle.size == @spects.size
+
     # Inject coloring here!!
-    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: @spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height}))
+    @spect_style += "set linetype cycle #{@rect_colors.size}\n"
+    @rect_colors.each_with_index do |color, i|
+      @spect_style += "set linetype #{i+1} lc rgb \"#{color}\" \n"
+    end
+    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: @spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
     @spect_plot.plot_to @spect_canvas
 
   end
@@ -199,7 +274,22 @@ class MappingPlotter
     end
   end
 
-  def selection_on_spect
+  def mouse_on_spect(event, state)
+      coord = @spect_plot.canvas_coord_to_plot_coord([event.x, event.y])
+    case state
+    when :mouseldown
+      if @spect_pt_mode.get_value == '1'
+        @spect_points.push coord
+      elsif @spect_range_mode.get_value == '1'
+        @spect_selection[0] = coord
+      end
+    when :mouserdown
+      @spect_selection[1] = coord
+      @mapping_func.delete('0.0', 'end')
+      @mapping_func.insert('end', "spects[0].from_to(#{@spect_selection[0][0]},#{@spect_selection[1][0]})")
+    when :dragging
+    when :mouseup
+    end
   end
 
   def open_scan
@@ -218,7 +308,7 @@ class MappingPlotter
     end
 
     @scan = Scan.new(@spe_path, File.basename(@spe_path, '.spe'), nil, {param_json: @json_path})
-    @scan.load
+    @scan.load({spectral_unit: @spectral_unit})
     # Generate z selection radiobuttons in @z_frame here
     
     remap
@@ -232,6 +322,10 @@ class MappingPlotter
       result = eval(cmd).to_s
       @term_output.insert('end', result)
       @term_output.insert('end', "\n-----\n")
+  end
+
+  def clear_terminal_output
+    @term_output.delete('1.0', 'end')
   end
 end
 

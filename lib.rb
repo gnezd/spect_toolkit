@@ -946,6 +946,16 @@ class RbTkCanvas
     eval(@plot)
     @target_cv = cv
   end
+
+  # Convert canvas selection to plot coordinates
+  def canvas_coord_to_plot_coord(selection_on_canvas)
+    plotarea_w = @plotarea[1] - @plotarea[0]
+    plotarea_h = @plotarea[3] - @plotarea[2]
+    x = (selection_on_canvas[0].to_f / @target_cv.width * 1000 - @plotarea[0]) / plotarea_w * @xrange + @axisranges[0]
+    y = (@plotarea[3] - selection_on_canvas[1].to_f / @target_cv.height * 1000) / plotarea_h * @yrange + @axisranges[2]
+
+    [x, y]
+  end
 end
   
 # Sparse methods below
@@ -974,12 +984,15 @@ def plot_spectra(spectra, options = {})
   plots += options[:plotline_inject] if options[:plotline_inject]
   spectra.each_with_index do |spectrum, i|
     spectrum.write_tsv(outdir + '/' + spectrum.name + '.tsv')
+    linestyle = "lt #{i+1}"
+    linestyle = options[:linestyle][i] if options[:linestyle]
     # Ugly fix
     # Should actually be filtering if enhanced is used
+    # reversing raman plot here aswell
     if options[:plot_term] == 'tkcanvas-rb'
-      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1} t '#{spectrum.name}'"
+      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name}'"
     else
-      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines lt #{i+1} t '#{spectrum.name.gsub('_', '\_')}'"
+      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name.gsub('_', '\_')}'"
     end
   end
   plotline = "plot " + plots.join(", \\\n")
@@ -1015,7 +1028,7 @@ GPLOT_HEADER
   gplot.puts options[:plot_style]
   gplot.puts plotline
   gplot.close
-  system("gnuplot #{outdir}/gplot")
+  `gnuplot '#{outdir}/gplot'`
   return plot_output
 end
 
