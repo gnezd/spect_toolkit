@@ -51,38 +51,53 @@ class MappingPlotter
       selection_on_map(e, :mouseup)
     }
 
-    @mapping_func = TkText.new(tkroot) {
-    grid('row': 1, 'column': 0, 'sticky': 'ew');
-    height '1';
+    mapping_func_frame = Tk::Tile::LabelFrame.new(tkroot) {text 'Mapping function';
+    grid('row': 1, 'column': 0, 'sticky': 'ew')}
+    @mapping_func = TkText.new(mapping_func_frame) {
+    height '2';
+    pack
     }
     @mapping_func.insert('0.0', 'spects[0].sum')
 
     # Map operations
-    @map_op_frame = TkFrame.new(tkroot) {
-      grid('row':2, 'column': 0, 'sticky': 'ew');
+    @map_op_frame = Tk::Tile::LabelFrame.new(tkroot) {
+      text 'Mapping operations';
+      grid('row':2, 'column': 0, 'sticky': 'ew', columnspan: 2)
     }
     # remap
     @remap_butn = TkButton.new(@map_op_frame){
-      grid('row':0, 'column': 0, 'sticky': 'ew');
+      grid('row':0, 'column': 0);
       text 'remap';
     }
     @remap_butn.command {remap}
-    
     @sum_or_pick = TkCheckButton.new(@map_op_frame){
-      grid('row':0, 'column': 1, 'sticky': 'ew');
+      grid('row':0, 'column': 1);
       text 'sum or not'
     }
-
-    @spepath = TkLabel.new(@map_op_frame){
-      grid('row': 1, 'column': 0, 'sticky': 'ew');
+    # TODO: select z construction when opening
+    @z_frame = Tk::Tile::Combobox.new(@map_op_frame){
+      grid('row': 0, 'column':2, 'sticky': 'ew')
     }
 
-    @jsonpath = TkLabel.new(@map_op_frame){
-      grid('row': 2, 'column': 0, 'sticky': 'ew');
+    # File opening parameters
+    @file_param_frame = Tk::Tile::LabelFrame.new(@tkroot){
+      grid(row: 3, column:0, sticky: 'ew', rowspan: 2)
+      text 'File parameter'
+    }
+
+    @spepath = TkLabel.new(@file_param_frame){
+      grid('row': 0, 'column': 0, 'sticky': 'ew');
+      text '<Spe path>'
+    }
+
+    @jsonpath = TkLabel.new(@file_param_frame){
+      grid('row': 1, 'column': 0, 'sticky': 'ew');
+      text '<JSON parameter file path>'
     }
     
-    @spect_unit = TkFrame.new(@map_op_frame){
-      grid('row': 1, 'column': 1, 'sticky': 'ew')
+    @spect_unit = Tk::Tile::LabelFrame.new(@file_param_frame){
+      text 'Spectral unit';
+      grid('row': 0, 'column': 2, 'sticky': 'ew')
     }
     TkLabel.new(@spect_unit){
       text 'Spectral unit: ';
@@ -95,10 +110,8 @@ class MappingPlotter
       value 'nm'
     }
     @unit_nm.command {
-      @unit_wavenumber.deselect;
       @spectral_unit = 'nm'
     }
-
     @unit_wavenumber = TkRadiobutton.new(@spect_unit){
       text 'wavenumber';
       grid('row':0, 'column': 2);
@@ -106,10 +119,8 @@ class MappingPlotter
       value 'wavenumber'
     }
     @unit_wavenumber.command {
-      @unit_nm.deselect;
       @spectral_unit = 'wavenumber'
     }
-    
     @unit_ev = TkRadiobutton.new(@spect_unit){
       text 'eV';
       grid('row':0, 'column': 3);
@@ -120,16 +131,11 @@ class MappingPlotter
       @spectral_unit = 'eV'
     }
 
-    @load_scan = TkButton.new(@map_op_frame){
-      grid('row': 2, 'column': 1, 'sticky': 'ew');
+    @load_scan = TkButton.new(@file_param_frame){
+      grid('row': 1, 'column': 2, 'sticky': 'ew');
       text 'open scan';
     }
     @load_scan.command {open_scan}
-    # TODO: select z construction when opening
-
-    @z_frame = TkFrame.new(@map_op_frame){
-      grid('row': 0, 'column':2, 'sticky': 'ew')
-    }
 
     # Spect_canvas
     @spect_canvas = TkCanvas.new(tkroot) {
@@ -180,7 +186,8 @@ class MappingPlotter
     @spect_plot = nil
 
     # Terminal
-    @term_frame = TkFrame.new(tkroot) {grid('column': 1, 'row': 2, 'sticky': 'ew'); borderwidth(5)}
+    @term_frame = Tk::Tile::LabelFrame.new(tkroot) {grid('column': 1, 'row': 2, 'sticky': 'ew', rowspan: 3);
+    text 'terminal'}
     @term_output = TkText.new(@term_frame) {grid('row': 0, 'column': 0, 'sticky': 'ew'); height '5'}
     @cmd_frame = TkFrame.new(@term_frame) {grid('row':1, 'column': 0, 'sticky': 'ew')}
     @cmd_input = TkText.new(@cmd_frame) {grid('row': 0, 'column': 0, 'rowspan': 2, 'sticky': 'ew'); height '3'}
