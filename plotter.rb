@@ -74,9 +74,13 @@ class MappingPlotter
       grid('row':0, 'column': 1);
       text 'sum or not'
     }
-    # TODO: select z construction when opening
-    @z_frame = Tk::Tile::Combobox.new(@map_op_frame){
+    @z_selector = Tk::Tile::Combobox.new(@map_op_frame){
+      textvariable @tk_z;
       grid('row': 0, 'column':2, 'sticky': 'ew')
+    }
+    @z_selector.bind("<ComboboxSelected>") {
+      puts "Combobox set to #{@z_selector.get}"
+      @z = @z_selector.get_to_i
     }
 
     # File opening parameters
@@ -316,7 +320,8 @@ class MappingPlotter
 
     @scan = Scan.new(@spe_path, File.basename(@spe_path, '.spe'), nil, {param_json: @json_path})
     @scan.load({spectral_unit: @spectral_unit})
-    # Generate z selection radiobuttons in @z_frame here
+    # Generate z selection radiobuttons in @z_selector here
+    @z_selector.configure('values', (0..@scan.depth-1).map {|z| z.to_s})
     
     remap
   end
