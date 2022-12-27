@@ -254,6 +254,7 @@ class Scan < Array
 
     case options&.[](:plot_term)
     when nil, 'svg' # Means not indicated or svg
+      z = options[:z] if options[:z]
       plot_output = "#{outdir}/#{@name}.svg"
       gplot_terminal =<<GP_TERM
 set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone
@@ -284,7 +285,6 @@ GP_TERM
     end
 
     gplot_style = options&.[](:plot_style)
-
 
 gplot_content =<<GPLOT_HEAD
 # Created by microPL_scan version #{VERSION}

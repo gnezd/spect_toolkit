@@ -1,0 +1,16 @@
+
+{
+    "X":1.0,
+    "Y":1.0,
+    "Scanning Position Z":1.0,
+    "Size X (um)":8,
+    "Size Y (um)":8,
+    "Size Z (um)":10,
+    "Points X":45,
+    "Points Y":45,
+    "Points Z":3,
+    "Time":3746167421.408829689,
+    "S-shape scan":false,
+    "Scan Wating Delay / Pixel (ms)":9527,
+    "note": "This is a fake scanning param file for testing purposes"
+}
