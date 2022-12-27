@@ -27,7 +27,7 @@ class MappingPlotter
     @linestyle = []
 
     # Map widget
-    @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew')}
+    @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew', rowspan: 3)}
     @map_canvas.bind("Configure") {
       geom = @map_canvas.winfo_geometry.split('+')[0].split('x').map {|n| n.to_i}
       @map_canvas.width = geom[0]-2 # Ugly fix, Sth. better is needed.
@@ -51,18 +51,11 @@ class MappingPlotter
       selection_on_map(e, :mouseup)
     }
 
-    mapping_func_frame = Tk::Tile::LabelFrame.new(tkroot) {text 'Mapping function';
-    grid('row': 1, 'column': 0, 'sticky': 'ew')}
-    @mapping_func = TkText.new(mapping_func_frame) {
-    height '2';
-    pack
-    }
-    @mapping_func.insert('0.0', 'spects[0].sum')
 
     # Map operations
     @map_op_frame = Tk::Tile::LabelFrame.new(tkroot) {
       text 'Mapping operations';
-      grid('row':2, 'column': 0, 'sticky': 'ew', columnspan: 2)
+      grid('row':3, 'column': 0, 'sticky': 'ew')
     }
     # remap
     @remap_butn = TkButton.new(@map_op_frame){
@@ -80,12 +73,17 @@ class MappingPlotter
     }
     @z_selector.bind("<ComboboxSelected>") {
       puts "Combobox set to #{@z_selector.get}"
-      @z = @z_selector.get_to_i
+      @z = @z_selector.get.to_i
     }
+    @save_map = TkButton.new(@map_op_frame){
+      grid(row: 0, column: 3);
+      text 'Save mapping'
+    }
+    @save_map.command {save_map}
 
     # File opening parameters
     @file_param_frame = Tk::Tile::LabelFrame.new(@tkroot){
-      grid(row: 3, column:0, sticky: 'ew', rowspan: 2)
+      grid(row: 4, column:0, sticky: 'ew')
       text 'File parameter'
     }
 
@@ -137,31 +135,37 @@ class MappingPlotter
 
     @load_scan = TkButton.new(@file_param_frame){
       grid('row': 1, 'column': 2, 'sticky': 'ew');
-      text 'open scan';
+      text 'open scan'
     }
     @load_scan.command {open_scan}
 
     # Spect_canvas
     @spect_canvas = TkCanvas.new(tkroot) {
-      grid('row': 0, 'column': 1, 'sticky': 'nsew')
+      grid('row': 0, 'column': 1, 'sticky': 'nsew', rowspan: 3)
     }
     # Spect operations
-    @spect_op_frame = TkFrame.new(tkroot) {
-      grid(row: 1, column: 1, sticky: 'ew')
+    @spect_op_frame = Tk::Tile::LabelFrame.new(tkroot) {
+      grid(row: 3, column: 1, sticky: 'ew');
+      text 'Spectrum operations'
     }
     @spect_range_mode = TkCheckButton.new(@spect_op_frame) {
-      grid(row: 0, column: 0)
+      grid(row: 0, column: 0);
       text 'pick range'
     }
     @spect_pt_mode = TkCheckButton.new(@spect_op_frame) {
-      grid(row: 0, column: 1)
+      grid(row: 0, column: 1);
       text 'pick points'
     }
     @spect_clear = TkButton.new(@spect_op_frame) {
-      grid(row: 0, column: 2)
+      grid(row: 0, column: 2);
       text 'clear spectra'
     }
     @spect_clear.command {clear_spectra}
+    @spect_save = TkButton.new(@spect_op_frame){
+      grid(row: 0, column: 3);
+      text 'Save spectrum'
+    }
+    @spect_save.command {save_spect}
 
     # Selection state and binding
     @spect_clicked = nil
@@ -188,16 +192,25 @@ class MappingPlotter
     }
 
     @spect_plot = nil
+    
+    # Bottom right tabs
+    @second_quad = Tk::Tile::Notebook.new(tkroot){grid('column': 1, 'row': 4, 'sticky': 'nsew')}
 
+    # Mapping function
+    mapping_func_frame = TkFrame.new(@second_quad)
+    @mapping_func = TkText.new(mapping_func_frame) {
+      height 7;
+      pack
+    }
+    @mapping_func.insert('0.0', 'spects[0].sum')
+    
     # Terminal
-    @term_frame = Tk::Tile::LabelFrame.new(tkroot) {grid('column': 1, 'row': 2, 'sticky': 'ew', rowspan: 3);
-    text 'terminal'}
+    @term_frame = TkFrame.new(@second_quad)
     @term_output = TkText.new(@term_frame) {grid('row': 0, 'column': 0, 'sticky': 'ew'); height '5'}
     @cmd_frame = TkFrame.new(@term_frame) {grid('row':1, 'column': 0, 'sticky': 'ew')}
     @cmd_input = TkText.new(@cmd_frame) {grid('row': 0, 'column': 0, 'rowspan': 2, 'sticky': 'ew'); height '3'}
     @cmd_input.bind('Control-KeyPress-r', proc {exec_command})
     @cmd_input.bind('Control-KeyPress-c', proc {clear_terminal_output})
-
 
     run = TkButton.new(@cmd_frame) {
       text 'Run';
@@ -209,6 +222,10 @@ class MappingPlotter
       grid('row':1, 'column': 1, 'sticky': 'ew')
     }
     clear.command {clear_terminal_output}
+    
+    # Add the tabs
+    @second_quad.add(mapping_func_frame, text: 'Mapping function')
+    @second_quad.add(@term_frame, text: 'Terminal')
     
     
   end
@@ -258,11 +275,12 @@ class MappingPlotter
     raise "@linestyle size and @spects size mismatch" unless @linestyle.size == @spects.size
 
     # Inject coloring here!!
-    @spect_style += "set linetype cycle #{@rect_colors.size}\n"
+    spect_style = @spect_style + "set linetype cycle #{@rect_colors.size}\n"
     @rect_colors.each_with_index do |color, i|
-      @spect_style += "set linetype #{i+1} lc rgb \"#{color}\" \n"
+      spect_style += "set linetype #{i+1} lc rgb \"#{color}\" \n"
     end
-    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: @spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
+    spect_style += "set xrange [#{@spects[0][0][0]}:#{@spects[0][-1][0]}]" if @spectral_unit == 'wavenumber'
+    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
     @spect_plot.plot_to @spect_canvas
 
   end
@@ -338,6 +356,17 @@ class MappingPlotter
 
   def clear_terminal_output
     @term_output.delete('1.0', 'end')
+  end
+
+  def save_map
+    Dir.mkdir('export') unless Dir.exist? 'export'
+    map_func = @mapping_func.get('0.0', 'end')
+    @scan.plot_map("./export/#{@scan.name}-map", {plot_term: 'svg',z: @z, plot_style: @map_style, scale: 5, plot_height: 800}) {|spects| eval(map_func) }
+  end
+
+  def save_spect
+    Dir.mkdir('export') unless Dir.exist? 'export'
+    plot_spectra(@spects, {out_dir: "./export/#{@scan.name}-spect", plot_term: 'svg', plot_style: @spect_style, linestyle: @linestyle})
   end
 end
 
