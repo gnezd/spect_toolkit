@@ -641,10 +641,18 @@ class Spectrum < Array
     sum
   end
   
-  def max()
+  def max
     memory = [0.0, 0.0]
     self.each do |pt|
       memory = pt if (pt[1] >= memory[1])
+    end
+    memory
+  end
+
+  def min
+    memory = [0.0, 0.0]
+    self.each do |pt|
+      memory = pt if (pt[1] <= memory[1])
     end
     memory
   end

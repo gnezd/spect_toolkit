@@ -21,10 +21,7 @@ class MappingPlotter
     @map_style = ''
     @z = 0
     # Spects 
-    @spects = []
     @baseline = nil
-    @spect_style = "unset ylabel\n"
-    @linestyle = []
 
     # Map widget
     @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew', rowspan: 3)}
@@ -183,8 +180,8 @@ class MappingPlotter
       mouse_on_spect(e, :mouserdown)
     }
     @spect_canvas.bind("Motion") {|e|
-      if @spect_clicked
-        mouse_on_spect(e, :dragging)
+      if @spect_ranging == true
+        mouse_on_spect(e, :ranging)
       end
     }
     @spect_canvas.bind("ButtonRelease-1") {|e|
@@ -238,7 +235,16 @@ class MappingPlotter
 
   # Plot spects
   # Invoke color style injection
-  def update_spectra
+  def update_spectra_plot
+    raise "@linestyle size and @spects size mismatch" unless @linestyle.size == @spects.size
+
+    # Inject coloring here!!
+    spect_style = @spect_style + "set linetype cycle #{@rect_colors.size}\n"
+    @rect_colors.each_with_index do |color, i|
+      spect_style += "set linetype #{i+1} lc rgb \"#{color}\" \n"
+    end
+    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
+    @spect_plot.plot_to @spect_canvas
   end
 
   def clear_spectra
@@ -272,16 +278,7 @@ class MappingPlotter
       # Check: spectrum naming?
     end
 
-    raise "@linestyle size and @spects size mismatch" unless @linestyle.size == @spects.size
-
-    # Inject coloring here!!
-    spect_style = @spect_style + "set linetype cycle #{@rect_colors.size}\n"
-    @rect_colors.each_with_index do |color, i|
-      spect_style += "set linetype #{i+1} lc rgb \"#{color}\" \n"
-    end
-    spect_style += "set xrange [#{@spects[0][0][0]}:#{@spects[0][-1][0]}]" if @spectral_unit == 'wavenumber'
-    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
-    @spect_plot.plot_to @spect_canvas
+    update_spectra_plot
 
   end
 
@@ -310,13 +307,19 @@ class MappingPlotter
       if @spect_pt_mode.get_value == '1'
         @spect_points.push coord
       elsif @spect_range_mode.get_value == '1'
+        @spect_ranging = true
         @spect_selection[0] = coord
+        @spect_range_highlight.delete if defined? @spect_range_highlight
+        @spect_range_highlight = TkcRectangle.new(@spect_canvas, event.x, 10, event.x, @spect_canvas.height*0.9, outline: 'red')
+        @orig=[event.x, event.y]
       end
     when :mouserdown
       @spect_selection[1] = coord
-      @mapping_func.delete('0.0', 'end')
-      @mapping_func.insert('end', "spects[0].from_to(#{@spect_selection[0][0]},#{@spect_selection[1][0]})")
-    when :dragging
+      @mapping_func.insert('end', "\nspects[0].from_to(#{@spect_selection[0][0]},#{@spect_selection[1][0]})")
+      @spect_ranging = false
+    when :ranging
+      @spect_selection[1] = coord
+      @spect_range_highlight.coords(@orig[0], 10, event.x, @spect_canvas.height*0.9)
     when :mouseup
     end
   end
@@ -326,6 +329,9 @@ class MappingPlotter
     @spepath.text = File.basename(@spe_path)
     @json_path = Tk.getOpenFile {title 'Open param'};
     @jsonpath.text = File.basename(@json_path)
+
+    @spect_style = "unset ylabel\n"
+    clear_spectra
     
     if !(File.exist? @spe_path) 
       puts "Spe file not found"
@@ -341,6 +347,7 @@ class MappingPlotter
     # Generate z selection radiobuttons in @z_selector here
     @z_selector.configure('values', (0..@scan.depth-1).map {|z| z.to_s})
     
+    @spect_style += "set xrange [#{@scan[0][0][0][0][0][0]}:#{@scan[0][0][0][0][-1][0]}]\n" if @spectral_unit == 'wavenumber'
     remap
   end
 
