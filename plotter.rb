@@ -219,10 +219,26 @@ class MappingPlotter
       grid('row':1, 'column': 1, 'sticky': 'ew')
     }
     clear.command {clear_terminal_output}
+
+    # Spectra lsit
+    @spectra_frame = TkFrame.new(@second_quad)
+    # List and apply operation
+    # Such as show and hide
     
+    # Baseline function
+    @baseline_frame = TkFrame.new(@second_quad)
+    # Propose and plot
+
+    # Fitting
+    @fitting_frame = TkFrame.new(@second_quad)
+    # Propose and plot
+
     # Add the tabs
     @second_quad.add(mapping_func_frame, text: 'Mapping function')
     @second_quad.add(@term_frame, text: 'Terminal')
+    @second_quad.add(@spectra_frame, text: 'Spectra')
+    @second_quad.add(@baseline_frame, text: 'Baseline')
+    @second_quad.add(@fitting_frame, text: 'Fitting')
     
     
   end

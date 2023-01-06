@@ -437,7 +437,8 @@ class Spectrum < Array
       end
     end
 
-    loosened = []
+    loosened = Spectrum.new
+    loosened.name = self.name
     if loosen
       #puts "start loosening with radius #{loosen}"
       i = 0
@@ -454,7 +455,8 @@ class Spectrum < Array
           #puts "deleting at #{loser}"
         end
       end
-      loosened.each {|i| result.push i}
+      #loosened.each {|i| result.push i}
+      result = loosened
     end
     result
   end
@@ -655,6 +657,24 @@ class Spectrum < Array
       memory = pt if (pt[1] <= memory[1])
     end
     memory
+  end
+
+  def normalize!
+    update_info
+    @name += "-normalized"
+    self.each do |pt|
+      pt[1] = (pt[1] - @signal_range[0]).to_f / (@signal_range[1] - @signal_range[0])
+    end
+  end
+  
+  def normalize
+    update_info
+    result = Spectrum.new
+    result.name = @name + "-normalized"
+    self.each_with_index do |pt, i|
+      result[i] = [pt[0], (pt[1] - @signal_range[0]).to_f / (@signal_range[1] - @signal_range[0])]
+    end
+    result
   end
 end
 
