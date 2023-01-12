@@ -121,7 +121,7 @@ class Scan < Array
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
 
     # Scan mismatch
-    raise "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
+    #raise "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
     i = 0
