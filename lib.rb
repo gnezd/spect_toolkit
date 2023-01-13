@@ -538,14 +538,18 @@ class Spectrum < Array
   end
 
   def *(input)
+    # Inner product
     if input.is_a? Spectrum
       sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
       self_resmpled_v = GSL::Vector.alloc(self.resample(sample).map {|pt| pt[1]})
       input_resmpled_v = GSL::Vector.alloc(input.resample(sample).map {|pt| pt[1]})
       self_resmpled_v * input_resmpled_v.col
-      self_resmpled_v.update_info
+    # Scalar product
     elsif input.is_a? Numeric
-      self.each {|pt| pt[1] = pt[1].to_f * input}
+      result = Spectrum.new
+      self.each {|pt| result.push([pt[0], pt[1].to_f * input])}
+      result.update_info
+      result
     end
   end
 
@@ -674,6 +678,7 @@ class Spectrum < Array
     self.each_with_index do |pt, i|
       result[i] = [pt[0], (pt[1] - @signal_range[0]).to_f / (@signal_range[1] - @signal_range[0])]
     end
+    result.update_info
     result
   end
 end
@@ -949,7 +954,7 @@ GPLOTCONTENT
       gnuplot_fout = File.open "#{output_path}/#{@name}-#{roin}.gplot", 'w'
       gnuplot_fout.puts gnuplot_content
       gnuplot_fout.close
-      `gnuplot #{output_path}/#{@name}-#{roin}.gplot`
+      `gnuplot '#{output_path}/#{@name}-#{roin}.gplot'`
     end
   end
 end
@@ -1100,12 +1105,12 @@ GPLOT_replot
   data_fname
 end
 
-def matrix_write(matrix, path)
+def matrix_write(matrix, path, delim = "\t")
   matrix = matrix.transpose
   raise "Some entries in data are different in length" unless matrix.all? {|line| line.size == matrix[0].size}
   matrix_out = File.open path, 'w'
   matrix.each do |line|
-    matrix_out.puts line.join "," 
+    matrix_out.puts line.join delim 
   end
   matrix_out.close
 end

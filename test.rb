@@ -652,7 +652,7 @@ end
 
 def adpl_test
   adpl1 = ADPL.new('testdata/ADPL_11Aug_setup-AlQ3_test 16_40_11 microPL.spe', 'AlQ3test_11Aug', {scans_per_deg: 2})
-  adpl1.plot('./output/')
+  adpl1.plot('./output')
 end
 
 def chunck_read_vs_slurp_read
@@ -755,7 +755,7 @@ def load_scan_from_unbinned_spe
   puts scan[0][0][0][0][0..5]
 end
 
-load_scan_from_unbinned_spe
+#load_scan_from_unbinned_spe
 #plot_spectra_term_test
 #tkcanvas_plot_test
 #plot_map_style_test
@@ -764,7 +764,7 @@ load_scan_from_unbinned_spe
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
 #plot_map_test
-#adpl_test
+adpl_test
 #multi_roi_spe_test
 #multi_roi_scan_test
 #plot_map_test
