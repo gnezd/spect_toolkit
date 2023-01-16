@@ -477,6 +477,7 @@ class Spectrum < Array
     result
   end
 
+  # Resample spectrum at given locations
   def resample(sample_in)
     raise "Not a sampling 1D array" unless sample_in.is_a? Array
     raise "Expecting 1D array to be passed in" unless sample_in.all? Numeric
@@ -490,6 +491,7 @@ class Spectrum < Array
     result.units = @units
 
     # Frequency value could be increasing or depending on unit
+    # Bare with the ternary for x_polarity will be used later
     x_polarity = (self[-1][0] - self[0][0] > 0 ) ? 1 : -1
     sample.reverse! if x_polarity == -1
 
@@ -539,8 +541,11 @@ class Spectrum < Array
   end
 
   def /(input)
+    result = Spectrum.new
     raise "Not being devided by a number." unless input.is_a? Numeric
-    self.each {|pt| pt[1] = pt[1].to_f / input}
+    self.each {|pt| reslt.push([pt[0], pt[1].to_f / input.to_f])}
+    result.name = @name + "d#{input}"
+    result
   end
 
   def +(input)
@@ -565,6 +570,7 @@ class Spectrum < Array
     self_resampled.each_index do |i|
       self_resampled[i][1] -= input_resmpled[i][1]
     end
+    self_resampled.name = old_name #preserve name, not to be changed by resample()
     self_resampled.update_info
     self_resampled
   end
@@ -576,10 +582,10 @@ class Spectrum < Array
   end
 
   def spikiness(smooth, loosening)
-    smoothed = self.ma(3)
+    smoothed = self.ma(smooth)
     minmax_diff = smoothed.minmax(loosening)
     spikiness = (minmax_diff * minmax_diff) / minmax_diff.size
-    # But not normalized to intensity. Whether this is good or not...
+    # But not normalized to intensity. Whether this is good...
     spikiness
   end
 
