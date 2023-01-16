@@ -373,7 +373,7 @@ class Spectrum < Array
         @name = File.basename(path)
         update_info
       else
-        puts "No seperator found in #{path}"
+        raise "No seperator found in #{path}"
       end
     end
   end
@@ -403,7 +403,7 @@ class Spectrum < Array
 
     result = Spectrum.new
     (0..self.size-2*radius-1).each do |i|
-      # Note that the index i of the moving average chromatogram aligns with i + radius in originaal chromatogram
+      # Note that the index i of the moving average spectrum aligns with i + radius in original spectrum
       x = self[i + radius][0]
       y = 0.0
       (i .. i + 2 * radius).each do |origin_i|
@@ -427,6 +427,25 @@ class Spectrum < Array
     end
     result
   end
+  
+  def peak_loosen(loosen)
+    loosened = Spectrum.new
+    loosened.name = self.name + '-l#{loosen}'
+    #start loosening with radius #{loosen}
+    i = 0
+    while i < self.size - 1
+      if (self[i][0] - self[i+1][0])**2 + (self[i][1] - self[i+1][1])**2 > loosen**2
+        loosened.push self[i]
+        loosened.push self[i+1] if i == self.size-2
+        i +=1
+      else
+        loser = (self[i][1] - self[i+1][1] >= 0) ? i : i+1
+        self.delete_at loser
+        loosened.push self[i] if i == self.size-1
+      end
+    end
+    loosened
+  end
 
   def local_max(loosen = nil)
     raise "Loosen neighborhood should be number of points" unless loosen.is_a? Integer or loosen == nil
@@ -437,26 +456,8 @@ class Spectrum < Array
       end
     end
 
-    loosened = Spectrum.new
-    loosened.name = self.name
     if loosen
-      #puts "start loosening with radius #{loosen}"
-      i = 0
-      while i < result.size - 1
-        if (result[i][0] - result[i+1][0])**2 + (result[i][1] - result[i+1][1])**2 > loosen**2
-          loosened.push result[i]
-          loosened.push result[i+1] if i == result.size-2
-          i +=1
-        else
-          loser = (result[i][1] - result[i+1][1] >= 0) ? i : i+1
-          #puts "comparing #{result[i..i+1]}, loser is #{loser}"
-          result.delete_at loser
-          loosened.push result[i] if i == result.size-1
-          #puts "deleting at #{loser}"
-        end
-      end
-      #loosened.each {|i| result.push i}
-      result = loosened
+      result = reslt.peak_loosen(loosen)
     end
     result
   end
@@ -470,24 +471,8 @@ class Spectrum < Array
       end
     end
 
-    loosened = []
     if loosen
-      #uts "start loosening with radius #{loosen}"
-      i = 0
-      while i < result.size - 1
-        if (result[i][0] - result[i+1][0])**2 + (result[i][1] - result[i+1][1])**2 > loosen**2
-          loosened.push result[i]
-          loosened.push result[i+1] if i == result.size-2
-          i +=1
-        else
-          loser = (result[i][1] - result[i+1][1] >= 0) ? i : i+1
-          #puts "comparing #{result[i..i+1]}, loser is #{loser}"
-          result.delete_at loser
-          loosened.push result[i] if i == result.size-1
-          #puts "deleting at #{loser}"
-        end
-      end
-      loosened.each {|i| result.push i}
+      result = reslt.peak_loosen(loosen)
     end
     result
   end
