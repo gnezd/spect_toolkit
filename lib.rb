@@ -393,6 +393,8 @@ class Spectrum < Array
   def update_info
     @spectral_range = self.minmax_by { |pt| pt[0] }.map{ |pt| pt[0] }
     @signal_range = self.minmax_by { |pt| pt[1] }.map{ |pt| pt[1] }
+    self.sort!
+    self.reverse! unless @units[0] == 'nm'
   end
 
   def ma(radius)
@@ -543,8 +545,9 @@ class Spectrum < Array
   def /(input)
     result = Spectrum.new
     raise "Not being devided by a number." unless input.is_a? Numeric
-    self.each {|pt| reslt.push([pt[0], pt[1].to_f / input.to_f])}
+    self.each {|pt| result.push([pt[0], pt[1].to_f / input.to_f])}
     result.name = @name + "d#{input}"
+    result.update_info
     result
   end
 
@@ -570,7 +573,7 @@ class Spectrum < Array
     self_resampled.each_index do |i|
       self_resampled[i][1] -= input_resmpled[i][1]
     end
-    self_resampled.name = old_name #preserve name, not to be changed by resample()
+    self_resampled.name = @name #preserve name, not to be changed by resample()
     self_resampled.update_info
     self_resampled
   end
