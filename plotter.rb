@@ -22,6 +22,7 @@ class MappingPlotter
     @z = 0
     # Spects 
     @baseline = nil
+    @spect_plot = nil
 
     # Map widget
     @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew', rowspan: 3)}
@@ -29,6 +30,7 @@ class MappingPlotter
       geom = @map_canvas.winfo_geometry.split('+')[0].split('x').map {|n| n.to_i}
       @map_canvas.width = geom[0]-2 # Ugly fix, Sth. better is needed.
       @map_canvas.height = geom[1]-2
+      @map.plot_to @map_canvas if @map
     }
 
     # Selection state and binding
@@ -172,6 +174,7 @@ class MappingPlotter
       geom = @spect_canvas.winfo_geometry.split('+')[0].split('x').map {|n| n.to_i}
       @spect_canvas.width = geom[0]-2 # Ugly fix, Sth. better is needed.
       @spect_canvas.height = geom[1]-2
+      update_spectra_plot if @spect_plot
     }
     @spect_canvas.bind("Button-1") {|e|
       mouse_on_spect(e, :mouseldown)
@@ -188,7 +191,6 @@ class MappingPlotter
       mouse_on_spect(e, :mouseup)
     }
 
-    @spect_plot = nil
     
     # Bottom right tabs
     @second_quad = Tk::Tile::Notebook.new(tkroot){grid('column': 1, 'row': 4, 'sticky': 'nsew')}
