@@ -755,6 +755,20 @@ def load_scan_from_unbinned_spe
   puts scan[0][0][0][0][0..5]
 end
 
+def scan_load_spe_benchmark
+  results = []
+  GC.disable
+  [1, 8].each do |parallelize|
+    result = Benchmark.measure do
+      scan = Scan.new('spe.spe', 'bigspe', [200,200,1], {parallelize: parallelize})
+      scan.load
+      puts scan.inspect
+    end
+    results.push result
+  end
+  puts results
+end
+
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
 #tkcanvas_plot_test
@@ -764,7 +778,7 @@ end
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
 #plot_map_test
-adpl_test
+#adpl_test
 #multi_roi_spe_test
 #multi_roi_scan_test
 #plot_map_test

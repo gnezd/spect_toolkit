@@ -112,6 +112,7 @@ class Scan < Array
   def load_spe(options)
     # File read
     debug = options[:debug]
+    parallelize = options[:parallelize]
     puts "loading spe #{@path} with options #{options}."
     puts "Reading spe at #{Time.now}" if debug
     
@@ -121,7 +122,7 @@ class Scan < Array
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
 
     # Scan mismatch
-    #raise "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
+    puts "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
     i = 0
