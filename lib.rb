@@ -29,7 +29,7 @@ class Scan < Array
 
     @loaded = false
     @spectral_width = 0
-    super Array.new(width) {Array.new(height) {Array.new(depth) {Spectrum.new()}}}
+    super Array.new(@width) {Array.new(@height) {Array.new(@depth) {Spectrum.new()}}}
     puts "#{name} to be loaded from #{path}"
   end
 
@@ -125,6 +125,19 @@ class Scan < Array
     puts "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
+    roia = @spe.rois.size
+    (0..@spe.frames-1).each do |frame|
+      k = frame / (@height * @width)
+      j = (frame - k * (@height * @width)) / @width
+      i = frame - k * @height * @width - j * @width
+      scan_polarity = @s_scan ? (j%2) : 0
+      i = i * (1-scan_polarity) + (@width - 1 - i)*scan_polarity
+      self[i][j][k] = (0..roia-1).map {|roin| @spe.at(frame, roin)}
+    end
+      
+
+    # Just don't rebuild
+=begin
     i = 0
     while i < @width
       j = 0
@@ -149,6 +162,8 @@ class Scan < Array
       end
       i += 1
     end
+=end
+
     puts "Scan building complete at #{Time.now}." if debug
   end
 
@@ -719,7 +734,7 @@ class Alignment
   end
 end
 
-class Spe < Array
+class Spe
   attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height,:framesize, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :rois, :bin_to_spect
   
   def initialize(path, name, options={})
@@ -838,7 +853,7 @@ class Spe < Array
   def at(frame, roin)
   raise "Roi and frame # must be specified" if (frame == nil) || (roin == nil)
 
-    # Unbinned ROI, output array
+    # Unbinned ROI, return 2D array
     if @rois[roin][:data_height] > 1 && !(@bin_to_spect)
       result = Array.new(@rois[roin][:data_height]) {Array.new(@rois[roin][:data_width]) {0}}
       yi = 0
@@ -848,12 +863,13 @@ class Spe < Array
       end
       return result.transpose
 
-    # Output Spectrum
+    # Return Spectrum
     else
       result = Spectrum.new()
       xi = 0
       roishift = 0
 
+      # Compute roi shift from ROIs 0..roin-1
       roii = 0
       while roii < roin
         roishift += @rois[roii][:data_width] * @rois[roii][:data_height]
@@ -879,8 +895,8 @@ class Spe < Array
           xi += 1
         end
       end
-      result.name = "#{@name}-#{frame}-roi#{roin}"
 
+      result.name = "#{@name}-#{frame}-roi#{roin}"
       result.update_info
       result.units = @spectrum_units
       return result

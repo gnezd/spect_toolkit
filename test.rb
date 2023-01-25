@@ -760,8 +760,8 @@ def scan_load_spe_benchmark
   GC.disable
   [1, 8].each do |parallelize|
     result = Benchmark.measure do
-      scan = Scan.new('spe.spe', 'bigspe', [200,200,1], {parallelize: parallelize})
-      scan.load
+      scan = Scan.new('./testdata/spe.spe', 'bigspe', [200,200,1])
+      scan.load({parallelize: parallelize, debug: true})
       puts scan.inspect
     end
     results.push result
@@ -783,4 +783,5 @@ end
 #multi_roi_scan_test
 #plot_map_test
 #read_image_spe_test
+scan_load_spe_benchmark
 
