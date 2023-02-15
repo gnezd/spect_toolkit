@@ -773,7 +773,12 @@ class Spe < Array
     raise "Mismatch of number of blocks and number of sensor mapping information" unless data_blocks.size == @rois.size
 
     # Wavelength mapping
-    wavelengths_mapping = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:Wavelength').text.split(',').map {|x| x.to_f}
+    begin
+      wavelengths_mapping = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:Wavelength').text.split(',').map {|x| x.to_f}
+    rescue
+      puts "Normal wavelength mapping not found for #{@name}. Try WavelengthError"
+      wavelengths_mapping = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:WavelengthError').text.split(' ').map {|x| x.split(',')[0].to_f}
+    end
     
     # Calculating framesize and @wv
     @framesize = 0
