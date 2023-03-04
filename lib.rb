@@ -24,6 +24,9 @@ class Scan < Array
       @width = scan_param['Points X']
       @height= scan_param['Points Y']
       @depth = scan_param['Points Z']
+      @p_width = scan_param['Size X (um)'].to_f
+      @p_height = scan_param['Size Y (um)'].to_f
+      @p_height = scan_param['Size Z (um)'].to_f
       @s_scan = scan_param['S-shape scan']
     end
 
@@ -305,7 +308,7 @@ GP_TERM
 gplot_content =<<GPLOT_HEAD
 # Created by microPL_scan version #{VERSION}
 #{gplot_terminal}
-set size ratio -1
+set size ratio #{@p_height/@p_width}
 set border 0
 unset key
 set xrange[-0.5:#{@width-0.5}]
@@ -789,7 +792,12 @@ class Spe
     raise "Mismatch of number of blocks and number of sensor mapping information" unless data_blocks.size == @rois.size
 
     # Wavelength mapping
-    wavelengths_mapping = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:Wavelength').text.split(',').map {|x| x.to_f}
+    begin
+      wavelengths_mapping = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:Wavelength').text.split(',').map {|x| x.to_f}
+    rescue
+      puts "Normal wavelength mapping not found for #{@name}. Try WavelengthError"
+      wavelengths_mapping = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:WavelengthError').text.split(' ').map {|x| x.split(',')[0].to_f}
+    end
     
     # Calculating framesize and @wv
     @framesize = 0
