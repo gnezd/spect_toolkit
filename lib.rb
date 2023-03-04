@@ -130,6 +130,7 @@ class Scan < Array
     # Spectrum building
     roia = @spe.rois.size
     (0..@spe.frames-1).each do |frame|
+      puts "doing frame #{frame}" if frame%100 == 0
       k = frame / (@height * @width)
       j = (frame - k * (@height * @width)) / @width
       i = frame - k * @height * @width - j * @width
@@ -366,13 +367,13 @@ GPLOT_HEAD
   end
 end
 
-class Spectrum < Array
-  attr_accessor :name, :units, :spectral_range, :signal_range, :desc
+class Spectrum
+  attr_accessor :name, :units, :spectral_range, :signal_range, :desc, :wv, :values
+  
   def initialize(path=nil)
     @name = ''
     @desc = ''
     @units = ['', 'counts']
-    super Array.new() {[0.0, 0.0]}
     # Load from tsv/csv if path given
     #if path && (File.exist? path) too gracious!
     if path
@@ -383,11 +384,10 @@ class Spectrum < Array
       if match = lines[0].match(/[\t,]/)
         puts "Loading from #{path}"
         seperator = match[0]
+        @wv = Array.new() {0.0}
+        @values = Array.new() {0.0}
         lines.each_index do |i|
-          (wv, intensity) = lines[i].split seperator
-          wv = wv.to_f
-          intensity = intensity.to_f
-          self[i] = [wv, intensity]
+          (@wv[i], @values[i]) = lines[i].split(seperator).map {|e| e.to_f}
         end
         @name = File.basename(path)
         update_info
@@ -395,6 +395,15 @@ class Spectrum < Array
         raise "No seperator found in #{path}"
       end
     end
+  end
+
+  def [](i)
+    [@wv[i], @values[i]]
+  end
+  
+  def []=(i, v)
+    @wv[i] = v[0]
+    @values[i] = v[1]
   end
 
   def write_tsv(outname)
@@ -750,16 +759,16 @@ class Spe
     # Sluuurp
     puts "Loading spe file #{@path} at #{Time.now}" if debug
     fin = File.open @path, 'rb'
-    raw = fin.read(fin.size).freeze
+    fraw = fin.read(fin.size).freeze # File raw
     fin.close
     puts "Finished reading spe at #{Time.now}" if debug
 
     # Obtain xml index and unpack binary
-    xml_index = raw[678..685].unpack1('Q')
-    xml_raw = raw[xml_index..-1]
-    binary_data = raw[0x1004..xml_index-1].freeze
-    unpacked_counts = binary_data.unpack('S*').freeze
-    puts "Unpacked binary has a lenght of: #{unpacked_counts.size}" if debug
+    xml_index = fraw[678..685].unpack1('Q')
+    xml_raw = fraw[xml_index..-1]
+    binary_data = fraw[0x1004..xml_index-1].freeze
+    @raw = binary_data.unpack('S*').freeze
+    puts "Unpacked binary has a lenght of: #{@raw.size}" if debug
     
     # Starting position of xml part
     @xml = Nokogiri.XML(xml_raw)
@@ -772,6 +781,7 @@ class Spe
 
     # Region of Interest parameters
     @rois = []
+    roishift = 0
     @xml.xpath('//xmlns:SensorMapping').each do |roi|
       @rois.push({
         :id => roi.attr('id').to_i,
@@ -782,8 +792,10 @@ class Spe
         :xbinning => roi.attr('xBinning').to_i,
         :ybinning => roi.attr('yBinning').to_i,
         :data_width => roi.attr('width').to_i / roi.attr('xBinning').to_i,
-        :data_height => roi.attr('height').to_i / roi.attr('yBinning').to_i
+        :data_height => roi.attr('height').to_i / roi.attr('yBinning').to_i,
+        :roishift => roishift
       })
+      roishift += @rois.last[:data_width] * @rois.last[:data_height]
     end
     puts "ROIs:\n" + @rois.join("\n") if debug
 
@@ -810,9 +822,20 @@ class Spe
       wavelengths_nm += wavelengths_mapping[@rois[i][:x] .. @rois[i][:x]+@rois[i][:data_width]-1]
       puts "W: #{@rois[i][:width]} / #{@rois[i][:xbinning]} H: #{@rois[i][:height]} / #{@rois[i][:ybinning]}" if debug
     end
-    raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+    raise "0_o unpacked ints has a length of #{@raw.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless @raw.size == @frames * @framesize
 
-    
+    # Set unit and name
+    case options[:spectral_unit]
+    when 'wavenumber'
+      @wv = wavelengths_nm.map {|nm| 10000000.0 / nm}
+      @spectrum_units = ['wavenumber', 'counts']
+    when 'eV'
+      @wv = wavelengths_nm.map {|nm| 1239.84197 / nm}
+      @spectrum_units = ['eV', 'counts']
+    else
+      @wv = wavelengths_nm # nm
+      @spectrum_units = ['nm', 'counts']
+    end
     # @data_creation, @file_creation, @file_modified
     @data_creation = Time.parse(@xml.at_xpath('//xmlns:Origin').attr('created'))
     @file_creation = Time.parse(@xml.at_xpath('//xmlns:FileInformation').attr('created'))
@@ -825,18 +848,6 @@ class Spe
     # @exposure_time
     @exposure_time = @xml.at_xpath('//exp_ns:ShutterTiming/exp_ns:ExposureTime', {'exp_ns' => exp_ns}).text.to_f
 
-    # Set unit and name
-    case options[:spectral_unit]
-    when 'wavenumber'
-      @wv = wavelengths_nm.map {|nm| 10000000.0 / nm} # wavanumber
-      @spectrum_units = ['wavenumber', 'counts']
-    when 'eV'
-      @wv = wavelengths_nm.map {|nm| 1239.84197 / nm} # wavanumber
-      @spectrum_units = ['eV', 'counts']
-    else
-      @wv = wavelengths_nm # nm
-      @spectrum_units = ['nm', 'counts']
-    end
 
     # Paralellization: distribution of frames to process among processes
     if options[:parallelize]
@@ -852,9 +863,6 @@ class Spe
     else
       puts "#{@name} has images in frames of shape #{@rois}\n Loading." if debug
     end
-    
-    # Regardless of roi situation, just store unpacked_counts
-    super unpacked_counts
   end
 
   # Universal accesor for all regardless of spectrum or image containing Spes
@@ -874,32 +882,26 @@ class Spe
     # Return Spectrum
     else
       result = Spectrum.new()
+      result.wv = @wv[roin]
+      result.values = Array.new(@rois[roin][:data_width]) {0.0}
       xi = 0
-      roishift = 0
-
-      # Compute roi shift from ROIs 0..roin-1
-      roii = 0
-      while roii < roin
-        roishift += @rois[roii][:data_width] * @rois[roii][:data_height]
-        roii += 1
-      end
 
       # Binning needed
       if @bin_to_spect
         while xi < @rois[roin][:data_width]
-          result[xi] = [@wv[xi + roishift], 0]
           yi = 0
           while yi < @rois[roin][:data_height]
-            result[xi][1] += self[frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi]
+            result.values[xi] += @raw[frame * @framesize + @rois[roin][:roishift] + yi*@rois[roin][:data_width] + xi]
             yi += 1
           end
           xi += 1
         end
+        
       # No binning
       else
         while xi < @rois[roin][:data_width]
           result[xi] = [@wv[xi + roishift], 
-          self[frame * @framesize + roishift + xi]]
+          @raw[frame * @framesize + roishift + xi]]
           xi += 1
         end
       end
@@ -924,6 +926,9 @@ class Spe
 
   def each_frame
 
+  end
+  def size
+    @frames * @framesize
   end
 end
 
