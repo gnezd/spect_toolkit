@@ -759,12 +759,12 @@ end
 def scan_load_spe_benchmark
   results = []
   GC.disable
-  [1].each do |parallelize|
+  [4].each do |parallelize|
     result = Benchmark.measure do
       scan = Scan.new('./testdata/spe.spe', 'bigspe', [200,200,1])
       scan.load({parallelize: parallelize, debug: true})
       #puts scan.inspect
-      binding.pry
+      #binding.pry
     end
     results.push result
   end

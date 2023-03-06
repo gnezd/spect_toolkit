@@ -5,7 +5,7 @@ VERSION = '2022Dec17-1'.freeze
 require 'gsl'
 require 'nokogiri'
 require 'time'
-#require 'parallel'
+require 'parallel'
 require 'json'
 
 class Scan < Array
@@ -120,7 +120,7 @@ class Scan < Array
     puts "Reading spe at #{Time.now}" if debug
     
     # BIN to spectrum here
-    options[:bin_to_spect] = true
+    #options[:bin_to_spect] = true
     @spe = Spe.new @path, @name, options
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
 
@@ -128,18 +128,27 @@ class Scan < Array
     puts "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
-    roia = @spe.rois.size
-    (0..@spe.frames-1).each do |frame|
-      puts "doing frame #{frame}" if frame%100 == 0
+    Parallel.each(0..parallelize-1) do |thread|
+      start = thread * @spe.frames/parallelize
+      last = (thread+1) * @spe.frames/parallelize -1
+      last = @spe.size - 1 if last >= @spe.size
+      puts "Starting thread #{thread} with frames #{start} ~ #{last}"
+      spe_load_thread(start, last)
+    end
+    puts "Scan building complete at #{Time.now}." if debug
+  end
+  
+  def spe_load_thread(frame_1st, frame_last)
+    (frame_1st..frame_last).each do |frame|
+      #puts "doing frame #{frame}" if frame % 100 == 0
       k = frame / (@height * @width)
       j = (frame - k * (@height * @width)) / @width
       i = frame - k * @height * @width - j * @width
       scan_polarity = @s_scan ? (j%2) : 0
       i = i * (1-scan_polarity) + (@width - 1 - i)*scan_polarity
-      self[i][j][k] = (0..roia-1).map {|roin| @spe.at(frame, roin)}
+      self[i][j][k] = (0..@spe.rois.size-1).map {|roin| @spe.at(frame, roin)}
       self[i][j][k].each_index {|roin| self[i][j][k][roin].name = "#{@name}-#{i}-#{j}-#{k}-#{roin}"}
     end
-    puts "Scan building complete at #{Time.now}." if debug
   end
 
   def inspect
@@ -869,9 +878,8 @@ class Spe
     # Return Spectrum
     else
       result = Spectrum.new(nil, {wv: @rois[roin][:wv]})
-      result.values = Array.new(@rois[roin][:data_width]) {0.0}
+      
       xi = 0
-
       # Binning needed
       if @bin_to_spect
         while xi < @rois[roin][:data_width]
@@ -886,8 +894,7 @@ class Spe
       # No binning
       else
         while xi < @rois[roin][:data_width]
-          result[xi] = [@rois[roin][:wv], 
-          @raw[frame * @framesize + roishift + xi]]
+          result.values[xi] = @raw[frame * @framesize + @rois[roin][:roishift] + xi]
           xi += 1
         end
       end
