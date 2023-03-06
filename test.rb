@@ -1,4 +1,5 @@
 require './lib.rb'
+require 'pry'
 require 'benchmark'
 
 def loading_test()
@@ -758,11 +759,12 @@ end
 def scan_load_spe_benchmark
   results = []
   GC.disable
-  [1, 8].each do |parallelize|
+  [1].each do |parallelize|
     result = Benchmark.measure do
       scan = Scan.new('./testdata/spe.spe', 'bigspe', [200,200,1])
       scan.load({parallelize: parallelize, debug: true})
-      puts scan.inspect
+      #puts scan.inspect
+      binding.pry
     end
     results.push result
   end
@@ -784,4 +786,3 @@ end
 #plot_map_test
 #read_image_spe_test
 scan_load_spe_benchmark
-

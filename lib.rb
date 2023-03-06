@@ -137,37 +137,8 @@ class Scan < Array
       scan_polarity = @s_scan ? (j%2) : 0
       i = i * (1-scan_polarity) + (@width - 1 - i)*scan_polarity
       self[i][j][k] = (0..roia-1).map {|roin| @spe.at(frame, roin)}
+      self[i][j][k].each_index {|roin| self[i][j][k][roin].name = "#{@name}-#{i}-#{j}-#{k}-#{roin}"}
     end
-      
-
-    # Just don't rebuild
-=begin
-    i = 0
-    while i < @width
-      j = 0
-      while j < @height
-        if j % 2 == 1 && @s_scan == true
-          #puts "Loading with S-shape scan"
-          relabel_i = @width - i - 1
-        else
-          relabel_i = i
-        end
-        k = 0
-        while k < @depth
-          #self[relabel_i][j][k] = @spe[k * (@width * @height) + j * @width + i]
-          self[relabel_i][j][k] = (0..@spe.rois.size-1).map {|roin| @spe.at(k * (@width * @height) + j * @width + i, roin)}
-          self[relabel_i][j][k].each_with_index do |roi, n|
-            roi.name = "#{@name}-#{i}-#{j}-#{k}-#{n}"
-            roi.update_info
-          end
-          k += 1
-        end
-        j += 1
-      end
-      i += 1
-    end
-=end
-
     puts "Scan building complete at #{Time.now}." if debug
   end
 
@@ -370,7 +341,7 @@ end
 class Spectrum
   attr_accessor :name, :units, :spectral_range, :signal_range, :desc, :wv, :values
   
-  def initialize(path=nil)
+  def initialize(path=nil, options={})
     @name = ''
     @desc = ''
     @units = ['', 'counts']
@@ -384,8 +355,8 @@ class Spectrum
       if match = lines[0].match(/[\t,]/)
         puts "Loading from #{path}"
         seperator = match[0]
-        @wv = Array.new() {0.0}
-        @values = Array.new() {0.0}
+        @wv = Array.new(lines.size) {0.0}
+        @values = Array.new(lines.size) {0.0}
         lines.each_index do |i|
           (@wv[i], @values[i]) = lines[i].split(seperator).map {|e| e.to_f}
         end
@@ -395,6 +366,19 @@ class Spectrum
         raise "No seperator found in #{path}"
       end
     end
+
+    # Preallocation
+    if options[:size]
+      @wv = Array.new(options[:size]) {0.0}
+      @values = Array.new(options[:size]) {0.0}
+    end
+    
+    # Assign wavelengths
+    if options[:wv]
+      @wv = options[:wv]
+      @values = Array.new(@wv.size) {0.0}
+    end
+    
   end
 
   def [](i)
@@ -406,10 +390,15 @@ class Spectrum
     @values[i] = v[1]
   end
 
+  def size
+    @wv.size
+    raise "spectral and signal point number mismatch" if @wv.size != @values.size
+  end
+
   def write_tsv(outname)
     fout = File.open outname, 'w'
-    self.each do |pt|
-      fout.puts pt.join "\t"
+    (0..@wv.size-1).dach do |i|
+      fout.puts "#{@wv[i]}\t#{@values[i]}"
     end
     fout.close
   end
@@ -419,10 +408,10 @@ class Spectrum
   end
 
   def update_info
-    @spectral_range = self.minmax_by { |pt| pt[0] }.map{ |pt| pt[0] }
-    @signal_range = self.minmax_by { |pt| pt[1] }.map{ |pt| pt[1] }
-    self.sort!
-    self.reverse! unless @units[0] == 'nm'
+    @spectral_range = @wv.minmax
+    @signal_range = @values.minmax
+    #self.sort!
+    #self.reverse! unless @units[0] == 'nm'
   end
 
   def ma(radius)
@@ -431,18 +420,16 @@ class Spectrum
     raise "Radius should be integer but was given #{radius}" unless radius.is_a?(Integer)
     raise "Radius larger than half the length of spectrum" if 2*radius >= self.size
 
-    result = Spectrum.new
+    result = Spectrum.new(nil, {size: self.size-2*radius-1})
     (0..self.size-2*radius-1).each do |i|
       # Note that the index i of the moving average spectrum aligns with i + radius in original spectrum
-      x = self[i + radius][0]
-      y = 0.0
+      result.wv[i] = self.wv[i + radius]
       (i .. i + 2 * radius).each do |origin_i|
         # Second loop to run through the neighborhood in origin
         # Would multiplication with a diagonal stripe matrix be faster than nested loop? No idea just yet.
-        y += self[origin_i][1]
+        result.values[i] += self.values[origin_i]
       end
-      y = y / (2 * radius + 1) # Normalization
-      result[i] = [x, y]
+      result.values[i] /= (2 * radius + 1) # Normalization
     end
     result.units = @units
     result.name = @name + "-ma#{radius}"
@@ -811,7 +798,7 @@ class Spe
       wavelengths_mapping = @xml.at_xpath('//xmlns:Calibrations/xmlns:WavelengthMapping/xmlns:WavelengthError').text.split(' ').map {|x| x.split(',')[0].to_f}
     end
     
-    # Calculating framesize and @wv
+    # Calculating framesize and @rois[i][:wv]
     @framesize = 0
     wavelengths_nm = []
     data_blocks.each_with_index do |block, i|
@@ -819,7 +806,7 @@ class Spe
       raise "Width mismatch" unless block.attr('width').to_i == @rois[i][:data_width]
       raise "Height mismatch" unless block.attr('height').to_i == @rois[i][:data_height]
       @framesize += @rois[i][:data_width] * @rois[i][:data_height]
-      wavelengths_nm += wavelengths_mapping[@rois[i][:x] .. @rois[i][:x]+@rois[i][:data_width]-1]
+      @rois[i][:wv] = wavelengths_mapping[@rois[i][:x] .. @rois[i][:x]+@rois[i][:data_width]-1]
       puts "W: #{@rois[i][:width]} / #{@rois[i][:xbinning]} H: #{@rois[i][:height]} / #{@rois[i][:ybinning]}" if debug
     end
     raise "0_o unpacked ints has a length of #{@raw.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless @raw.size == @frames * @framesize
@@ -827,13 +814,13 @@ class Spe
     # Set unit and name
     case options[:spectral_unit]
     when 'wavenumber'
-      @wv = wavelengths_nm.map {|nm| 10000000.0 / nm}
+      wv = wavelengths_nm.map {|nm| 10000000.0 / nm}
       @spectrum_units = ['wavenumber', 'counts']
     when 'eV'
-      @wv = wavelengths_nm.map {|nm| 1239.84197 / nm}
+      wv = wavelengths_nm.map {|nm| 1239.84197 / nm}
       @spectrum_units = ['eV', 'counts']
     else
-      @wv = wavelengths_nm # nm
+      wv = wavelengths_nm # nm
       @spectrum_units = ['nm', 'counts']
     end
     # @data_creation, @file_creation, @file_modified
@@ -881,8 +868,7 @@ class Spe
 
     # Return Spectrum
     else
-      result = Spectrum.new()
-      result.wv = @wv[roin]
+      result = Spectrum.new(nil, {wv: @rois[roin][:wv]})
       result.values = Array.new(@rois[roin][:data_width]) {0.0}
       xi = 0
 
@@ -900,7 +886,7 @@ class Spe
       # No binning
       else
         while xi < @rois[roin][:data_width]
-          result[xi] = [@wv[xi + roishift], 
+          result[xi] = [@rois[roin][:wv], 
           @raw[frame * @framesize + roishift + xi]]
           xi += 1
         end
@@ -917,7 +903,7 @@ class Spe
   
   def inspect
   #attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
-    ["Spe name: #{@name}", "path: #{@path}", "Contining #{@frames} frames of dimension #{@rois.inspect}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
+    ["Spe name: #{@name}", "path: #{@path}", "Contining #{@frames} frames of dimension #{(@rois.map{|roi| roi.select{|x| x[0] != :wv}}).inspect}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
   end
 
   def to_s
