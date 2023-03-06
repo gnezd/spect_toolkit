@@ -771,6 +771,13 @@ def scan_load_spe_benchmark
   puts results
 end
 
+def test_Spectrum
+
+  spect = Spectrum.new(nil, {wv: (0..999).map{|i| i*400.0/1000+300}})
+  raise "Size!" unless spect.size == 1000
+  (0..spect.size-1).each {|i| spect.values[i] = Math.sin(i/200)}
+
+end
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
 #tkcanvas_plot_test
@@ -785,4 +792,4 @@ end
 #multi_roi_scan_test
 #plot_map_test
 #read_image_spe_test
-scan_load_spe_benchmark
+#scan_load_spe_benchmark
