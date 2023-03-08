@@ -772,10 +772,21 @@ def scan_load_spe_benchmark
 end
 
 def test_Spectrum
-
   spect = Spectrum.new(nil, {wv: (0..999).map{|i| i*400.0/1000+300}})
-  raise "Size!" unless spect.size == 1000
-  (0..spect.size-1).each {|i| spect.values[i] = Math.sin(i/200)}
+  raise "Size! Should bee 1000 but found to be #{spect.size}" unless spect.size == 1000
+  (0..spect.size-1).each {|i| spect.values[i] = Math.sin(i.to_f/200)}
+  spect.write_tsv('./testdata/testing_spect_tsv_write.tsv')
+  spect2 = Spectrum.new('./testdata/testing_spect_tsv_write.tsv')
+  
+  # Check fidelity after tsv storage
+  (0..spect.size-1).each do |i|
+    raise "spect and spect2 missmatched at #{i}!" if spect[i] != spect2[i]
+  end
+
+  spect.name = "Sin"
+  spect.update_info
+  puts spect.inspect
+  plot_spectra([spect], {out_dir: './testdata/testspectra'})
 
 end
 #load_scan_from_unbinned_spe
@@ -793,3 +804,4 @@ end
 #plot_map_test
 #read_image_spe_test
 #scan_load_spe_benchmark
+test_Spectrum

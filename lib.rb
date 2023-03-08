@@ -400,13 +400,13 @@ class Spectrum
   end
 
   def size
-    @wv.size
     raise "spectral and signal point number mismatch" if @wv.size != @values.size
+    @wv.size
   end
 
   def write_tsv(outname)
     fout = File.open outname, 'w'
-    (0..@wv.size-1).dach do |i|
+    (0..@wv.size-1).each do |i|
       fout.puts "#{@wv[i]}\t#{@values[i]}"
     end
     fout.close
