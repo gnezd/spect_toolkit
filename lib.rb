@@ -547,11 +547,27 @@ class Spectrum < Array
 
   def /(input)
     result = Spectrum.new
-    raise "Not being devided by a number." unless input.is_a? Numeric
-    self.each {|pt| result.push([pt[0], pt[1].to_f / input.to_f])}
-    result.name = @name + "d#{input}"
-    result.update_info
-    result
+    if input.is_a? Numeric
+      self.each {|pt| result.push([pt[0], pt[1].to_f / input.to_f])}
+      result.name = @name + "d#{input}"
+      result.update_info
+    elsif input.is_a? Spectrum
+      resampled = align_with(input)
+      resampled[0].each_index do |i|
+        result[i] = [resampled[0][i][0], resampled[0][i][1] / resampled[1][i][1]]
+      end
+      result.name = @name+'-'+input.name
+    else
+      raise "Deviding by sth strange! #{input.class} is not defined as a denominator."
+    end
+      result
+  end
+
+  def align_with(input)
+    sample = self.map{|pt| pt[0]}.union(input.map{|pt| pt[0]})
+    self_resampled = self.resample(sample)
+    input_resmpled = input.resample(sample)
+    [self_resampled, input_resmpled]
   end
 
   def +(input)
