@@ -1,4 +1,5 @@
 require './lib.rb'
+require 'pry'
 require 'benchmark'
 
 def loading_test()
@@ -755,6 +756,39 @@ def load_scan_from_unbinned_spe
   puts scan[0][0][0][0][0..5]
 end
 
+def scan_load_spe_benchmark
+  results = []
+  GC.disable
+  (1..8).each do |parallelize|
+    result = Benchmark.measure do
+      scan = Scan.new('./testdata/spe.spe', 'bigspe', [200,200,1])
+      scan.load({parallelize: parallelize, debug: true})
+      #puts scan.inspect
+      #binding.pry
+    end
+    results.push result
+  end
+  puts results
+end
+
+def test_Spectrum
+  spect = Spectrum.new(nil, {wv: (0..999).map{|i| i*400.0/1000+300}})
+  raise "Size! Should bee 1000 but found to be #{spect.size}" unless spect.size == 1000
+  (0..spect.size-1).each {|i| spect.values[i] = Math.sin(i.to_f/200)}
+  spect.write_tsv('./testdata/testing_spect_tsv_write.tsv')
+  spect2 = Spectrum.new('./testdata/testing_spect_tsv_write.tsv')
+  
+  # Check fidelity after tsv storage
+  (0..spect.size-1).each do |i|
+    raise "spect and spect2 missmatched at #{i}!" if spect[i] != spect2[i]
+  end
+
+  spect.name = "Sin"
+  spect.update_info
+  puts spect.inspect
+  plot_spectra([spect], {out_dir: './testdata/testspectra'})
+
+end
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
 #tkcanvas_plot_test
@@ -764,9 +798,10 @@ end
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
 #plot_map_test
-adpl_test
+#adpl_test
 #multi_roi_spe_test
 #multi_roi_scan_test
 #plot_map_test
 #read_image_spe_test
-
+#scan_load_spe_benchmark
+test_Spectrum
