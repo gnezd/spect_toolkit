@@ -26,7 +26,7 @@ class Scan < Array
       @depth = scan_param['Points Z']
       @p_width = scan_param['Size X (um)'].to_f
       @p_height = scan_param['Size Y (um)'].to_f
-      @p_height = scan_param['Size Z (um)'].to_f
+      @p_depth = scan_param['Size Z (um)'].to_f
       @s_scan = scan_param['S-shape scan']
     end
 

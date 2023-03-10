@@ -764,7 +764,7 @@ end
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
 #plot_map_test
-adpl_test
+#adpl_test
 #multi_roi_spe_test
 #multi_roi_scan_test
 #plot_map_test
