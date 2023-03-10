@@ -26,13 +26,12 @@ class Scan < Array
       @depth = scan_param['Points Z']
       @p_width = scan_param['Size X (um)'].to_f
       @p_height = scan_param['Size Y (um)'].to_f
-      @p_height = scan_param['Size Z (um)'].to_f
+      @p_depth = scan_param['Size Z (um)'].to_f
       @s_scan = scan_param['S-shape scan']
     end
 
     @loaded = false
     @spectral_width = 0
-    super Array.new(@width) {Array.new(@height) {Array.new(@depth) {Spectrum.new()}}}
     puts "#{name} to be loaded from #{path}"
   end
 
@@ -116,6 +115,7 @@ class Scan < Array
     # File read
     debug = options[:debug]
     parallelize = options[:parallelize]
+    parallelize = 1 unless parallelize
     puts "loading spe #{@path} with options #{options}."
     puts "Reading spe at #{Time.now}" if debug
     
@@ -128,6 +128,7 @@ class Scan < Array
     puts "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
+    initialize Array.new(@width) {Array.new(@height) {Array.new(@depth) {Array.new(@spe.rois.size) {Spectrum.new()}}}}
     Parallel.each(0..parallelize-1) do |thread|
       start = thread * @spe.frames/parallelize
       last = (thread+1) * @spe.frames/parallelize -1
@@ -926,7 +927,7 @@ class Spe
   
   def inspect
   #attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time
-    ["Spe name: #{@name}", "path: #{@path}", "Contining #{@frames} frames of dimension #{(@rois.map{|roi| roi.select{|x| x[0] != :wv}}).inspect}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
+    ["Spe name: #{@name}", "path: #{@path}", "Containing #{@frames} frames of dimension #{(@rois.map{|roi| roi.select{|x| x[0] != :wv}}).inspect}", "Spectral units: #{@spectrum_units}", "Data created: #{@data_creation}, file created: #{@file_creation}, file last modified: #{@file_modified}", "Grating: #{@grating} with central wavelength being #{@center_wavelength} nm", "Exposure time: #{@exposure_time} ms."].join "\n"
   end
 
   def to_s

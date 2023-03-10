@@ -360,7 +360,7 @@ def read_spe
 
 end
 
-def load_spe
+def test_load_spe
   scan = Scan.new 'testdata/2566-3-smparea1-100x100from0-0-w-200x200x1 16_07_22 microPL.spe', '2566-3-survey', [200, 200, 1]
   scan.load({'s_scan' => true})
   plot_map(scan)
@@ -759,9 +759,9 @@ end
 def scan_load_spe_benchmark
   results = []
   GC.disable
-  (1..8).each do |parallelize|
+  scan = Scan.new('./testdata/spe.spe', 'bigspe', [200,200,1])
+  [8].each do |parallelize|
     result = Benchmark.measure do
-      scan = Scan.new('./testdata/spe.spe', 'bigspe', [200,200,1])
       scan.load({parallelize: parallelize, debug: true})
       #puts scan.inspect
       #binding.pry
@@ -769,6 +769,7 @@ def scan_load_spe_benchmark
     results.push result
   end
   puts results
+  binding.pry
 end
 
 def test_Spectrum
@@ -803,5 +804,5 @@ end
 #multi_roi_scan_test
 #plot_map_test
 #read_image_spe_test
-#scan_load_spe_benchmark
-test_Spectrum
+scan_load_spe_benchmark
+#test_Spectrum
