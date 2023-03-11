@@ -790,19 +790,24 @@ def test_Spectrum
   plot_spectra([spect], {out_dir: './testdata/testspectra'})
 
 end
-#load_scan_from_unbinned_spe
-#plot_spectra_term_test
-#tkcanvas_plot_test
-#plot_map_style_test
-#load_scan_with_param_json
-#read_image_spe_benchmark
-#read_spectra_spe_test
-#read_spectra_spe_benchmark
-#plot_map_test
-#adpl_test
-#multi_roi_spe_test
-#multi_roi_scan_test
-#plot_map_test
-#read_image_spe_test
-scan_load_spe_benchmark
-#test_Spectrum
+
+def parallel_load_scan_test
+  scan = Scan.new('./testdata/spe.spe', 'bigspe', [200,200,1])
+  scan.load({parallelize: 8, debug: true})
+  binding.pry
+end
+
+def binary_arr_test
+  arr_to_store = (0..9).map{|i| (0..9).map {|j| [i*j, (i*j)**0.5]}}
+  #puts arr_to_store[3][7]
+  fout = File.open './test.bin', 'wb'
+  flat = arr_to_store.flatten
+  puts flat[30..39].join '-'
+  packed = flat[30..39].pack("(SD)*")
+  #puts packed.size
+  unpacked = packed.unpack("(SD)*")
+  puts unpacked.size
+  puts unpacked.join '-'
+end
+
+binary_arr_test
