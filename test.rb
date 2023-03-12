@@ -764,7 +764,6 @@ def scan_load_spe_benchmark
     result = Benchmark.measure do
       scan.load({parallelize: parallelize, debug: true})
       #puts scan.inspect
-      #binding.pry
     end
     results.push result
   end

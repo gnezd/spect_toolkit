@@ -33,6 +33,7 @@ class Scan < Array
     @loaded = false
     @spectral_width = 0
     puts "#{name} to be loaded from #{path}"
+    super Array.new(@width) {Array.new(@height) {Array.new(@depth) {Array.new() {}}}}
   end
 
   def load(options = {})
@@ -128,18 +129,11 @@ class Scan < Array
     puts "Spe size (#{@spe.size}) with #{@spe.frames} frames doesn't match that of scan (#{@width} x #{@height} x #{@depth} x #{@spe.framesize})" unless @spe.size == @width * @height * @depth * @spe.framesize
 
     # Spectrum building
-    initialize Array.new(@width) {Array.new(@height) {Array.new(@depth) {Array.new(@spe.rois.size) {Spectrum.new()}}}}
-    Parallel.each(0..parallelize-1) do |thread|
-      start = thread * @spe.frames/parallelize
-      last = (thread+1) * @spe.frames/parallelize -1
-      last = @spe.size - 1 if last >= @spe.size
-      puts "Starting thread #{thread} with frames #{start} ~ #{last}"
-      spe_load_thread(start, last)
-    end
+    load_frames(0, @spe.frames-1)
     puts "Scan building complete at #{Time.now}." if debug
   end
   
-  def spe_load_thread(frame_1st, frame_last)
+  def load_frames(frame_1st, frame_last)
     (frame_1st..frame_last).each do |frame|
       #puts "doing frame #{frame}" if frame % 100 == 0
       k = frame / (@height * @width)
@@ -642,8 +636,13 @@ class Spectrum
     result
   end
 
+  # Unfinished. 頭昏昏.
+  def map
+    nil
+  end
+
   def sum
-    (self.map{|pt| pt[1]}).sum
+    values.sum
   end
 
   # For debugging the bg noise sensitivity of minmax spike assay
