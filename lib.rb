@@ -32,6 +32,8 @@ class Scan < Array
 
     @loaded = false
     @spectral_width = 0
+
+    super Array.new(@width) {Array.new(@height) {Array.new(@depth) {Array.new() {Spectrum.new}}}}
     puts "#{name} to be loaded from #{path}"
     super Array.new(@width) {Array.new(@height) {Array.new(@depth) {Array.new() {}}}}
   end
@@ -141,6 +143,7 @@ class Scan < Array
       i = frame - k * @height * @width - j * @width
       scan_polarity = @s_scan ? (j%2) : 0
       i = i * (1-scan_polarity) + (@width - 1 - i)*scan_polarity
+      # Change this! export binary array!
       self[i][j][k] = (0..@spe.rois.size-1).map {|roin| @spe.at(frame, roin)}
       self[i][j][k].each_index {|roin| self[i][j][k][roin].name = "#{@name}-#{i}-#{j}-#{k}-#{roin}"}
     end
