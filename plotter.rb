@@ -24,6 +24,9 @@ class MappingPlotter
     @baseline = nil
     @spect_plot = nil
 
+    # Initialize scratch space
+    Dir.mkdir './plotter_scratch' unless Dir.exist? './plotter_scratch'
+
     # Map widget
     @map_canvas = TkCanvas.new(tkroot) {grid('row': 0, 'column': 0, 'sticky':'nsew', rowspan: 3)}
     @map_canvas.bind("Configure") {
@@ -247,7 +250,7 @@ class MappingPlotter
 
   def remap
     map_func = @mapping_func.get('0.0', 'end')
-    @map = RbTkCanvas.new(@scan.plot_map('map', {plot_term: 'tkcanvas-rb', plot_width: @map_canvas.width, plot_height: @map_canvas.height, z: @z, plot_style: @map_style}) {|spects| eval(map_func) });
+    @map = RbTkCanvas.new(@scan.plot_map('plotter_scratch', {plot_term: 'tkcanvas-rb', plot_width: @map_canvas.width, plot_height: @map_canvas.height, z: @z, plot_style: @map_style}) {|spects| eval(map_func) });
     @map.plot_to @map_canvas
   end
 
@@ -261,7 +264,7 @@ class MappingPlotter
     @rect_colors.each_with_index do |color, i|
       spect_style += "set linetype #{i+1} lc rgb \"#{color}\" \n"
     end
-    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
+    @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./plotter_scratch/#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
     @spect_plot.plot_to @spect_canvas
   end
 
@@ -386,12 +389,12 @@ class MappingPlotter
   def save_map
     Dir.mkdir('export') unless Dir.exist? 'export'
     map_func = @mapping_func.get('0.0', 'end')
-    @scan.plot_map("./export/#{@scan.name}-map", {plot_term: 'svg',z: @z, plot_style: @map_style, scale: 5, plot_height: 800}) {|spects| eval(map_func) }
+    @scan.plot_map("./export/#{@scan.name}-map", {plot_term: 'svg',z: @z, plot_style: @map_style, scale: 5, plot_height: 800, dry_run: true}) {|spects| eval(map_func) }
   end
 
   def save_spect
     Dir.mkdir('export') unless Dir.exist? 'export'
-    plot_spectra(@spects, {out_dir: "./export/#{@scan.name}-spect", plot_term: 'svg', plot_style: @spect_style, linestyle: @linestyle})
+    plot_spectra(@spects, {out_dir: "./export/#{@scan.name}-spect", plot_term: 'svg', plot_style: @spect_style, linestyle: @linestyle, dry_run: true})
   end
 end
 

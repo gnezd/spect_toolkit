@@ -4,3 +4,9 @@
 *.temp
 ./plot*
 *.attrs
+Workspace
+export
+output
+scaffolds
+testdata/2566-3-smparea1-100x100from0-0-w-200x200x1 16_07_22 microPL.spe
+plotter_scratch

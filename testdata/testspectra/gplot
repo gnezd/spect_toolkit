@@ -1,0 +1,7 @@
+set terminal svg size 800,600 mouse enhanced standalone
+set output './testdata/testspectra/spect-plot.svg'
+
+set xlabel ''
+set ylabel 'intensity (cts)'
+
+plot './testdata/testspectra/Sin.tsv' u ($1):($2) with lines lt 1 t 'Sin'

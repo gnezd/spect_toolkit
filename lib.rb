@@ -1,5 +1,5 @@
 # Script for the processing of micro-PL scann data
-VERSION = '2022Dec17-1'.freeze
+VERSION = '2023Mar15-1'.freeze
 # No longer needed as long you export NMATRX=1
 # require 'nmatrix'
 require 'gsl'
@@ -10,7 +10,7 @@ require 'json'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded, :spe, :s_scan
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :loaded, :spe, :s_scan
   def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
@@ -132,6 +132,7 @@ class Scan < Array
 
     # Spectrum building
     load_frames(0, @spe.frames-1)
+    @spectrum_units = @spe.spectrum_units
     puts "Scan building complete at #{Time.now}." if debug
   end
   
@@ -150,7 +151,8 @@ class Scan < Array
   end
 
   def inspect
-    "Scan name: #{@name}, path: #{@path}, dim: #{@width} x #{@height} x #{@depth}, ROIs: #{@spe.rois}, units: #{@spectrum_units}"
+    "Scan name: #{@name}, path: #{@path}, dim: #{@width} x #{@height} x #{@depth} pts / #{@p_width} μm x #{@p_height} μm x #{@p_depth} μm,
+     ROIs: #{@spe.rois}, units: #{@spectrum_units}"
   end
 
   def to_s
@@ -203,10 +205,32 @@ class Scan < Array
     result
   end
 
+  # Calculate map
+  def build_map(&mapping_function)
+    # Building map matrix
+    # Note the zyx / xyz index swap for easy z chunk output!
+    @map_data = Array.new(@depth) {Array.new(@height) {Array.new(@width) {0.0}}}
+    
+    # Iteration
+    i = 0
+      while i < @width * @height * @depth
+        x = i % @width
+        y = ((i - x) / @width) % @height
+        z = i / (@width * height)
+        @map_data[z][y][x] = mapping_function.yield(self[x][y][z], [x, y, z])
+        i += 1
+      end
+  
+  end
+
+
   # Plot a scanning map with respect to the summation function given in the block
-  def plot_map(outdir = nil, options = {})
+  def plot_map(outdir = nil, options = {}, &mapping_function)
     # We need a block to calculate the map
-    if block_given? 
+    if !block_given? 
+      puts "No blocks were given. Assume simple summation across all ROIs."
+      mapping_function = Proc.new {|spects| (spects.map{|spect| spect.sum}).sum}
+    end
     if (options&.[](:scale)).is_a?(Integer) && options[:scale] > 0
       scale = options[:scale] * 5
       puts "Setting map plotting scale to #{scale}"
@@ -215,17 +239,7 @@ class Scan < Array
     end
 
     # Building map matrix
-    map = Array.new(@depth) {Array.new(@height) {Array.new(@width) {0.0}}}
-
-    # Serialize before parallelization
-    i = 0
-      while i < @width * @height * @depth
-        x = i % @width
-        y = ((i - x) / @width) % @height
-        z = i / (@width * height)
-        map[z][y][x] = yield(self[x][y][z], [x, y, z])
-        i += 1
-      end
+    build_map &mapping_function
 
     # Exporting map matrix
     outdir = @name unless outdir
@@ -236,7 +250,7 @@ class Scan < Array
       row = 0
       map_fout.puts "# z = #{z}"
       while row < @height
-        map_fout.puts map[z][row].join "\t"
+        map_fout.puts @map_data[z][row].join "\t"
         row += 1
       end
       map_fout.print "\n\n"
@@ -284,10 +298,11 @@ GP_TERM
 
     gplot_style = options&.[](:plot_style)
 
+    aspect_ratio = @p_height ? @p_height/@p_width : -1
 gplot_content =<<GPLOT_HEAD
 # Created by microPL_scan version #{VERSION}
 #{gplot_terminal}
-set size ratio #{@p_height/@p_width}
+set size ratio #{aspect_ratio}
 set border 0
 unset key
 set xrange[-0.5:#{@width-0.5}]
@@ -314,6 +329,7 @@ GPLOT_HEAD
       gplot.puts "unset multiplot"
       
     else
+      z = 0 unless z # Default layer
       # 1 sheet plotting
       #gplot.puts "set title '#{@name.gsub('_', '\\_')}'"
       gplot.puts "plot '#{outdir}/#{@name}.tsv' index #{z} matrix with image pixels"
@@ -323,11 +339,6 @@ GPLOT_HEAD
     `gnuplot '#{outdir}/#{@name}.gplot'`
     return plot_output
   
-  else # No block given
-    puts "No blocks were given. Assume simple summation across all ROIs."
-    plot_output = plot_map(outdir, options) {|spects| (spects.map{|spect| spect.sum}).sum}
-    return plot_output
-  end
   end
 
   # Return list of points in rectangular area defined by pt_1(x,y) to pt_2(x,y)
