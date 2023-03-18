@@ -10,7 +10,7 @@ require 'json'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units,:path, :name, :width, :height, :depth, :loaded, :spe, :s_scan
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :loaded, :spe, :s_scan
   def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
@@ -151,11 +151,13 @@ class Scan < Array
       end
       i += 1
     end
+    @spectrum_units = @spe.spectrum_units
     puts "Scan building complete at #{Time.now}." if debug
   end
 
   def inspect
-    "Scan name: #{@name}, path: #{@path}, dim: #{@width} x #{@height} x #{@depth}, ROIs: #{@spe.rois}, units: #{@spectrum_units}"
+    "Scan name: #{@name}, path: #{@path}, dim: #{@width} x #{@height} x #{@depth} pts / #{@p_width} μm x #{@p_height} μm x #{@p_depth} μm,
+     ROIs: #{@spe.rois}, units: #{@spectrum_units}"
   end
 
   def to_s
