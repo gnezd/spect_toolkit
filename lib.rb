@@ -274,7 +274,7 @@ class Scan < Array
       z = options[:z] if options[:z]
       plot_output = "#{outdir}/#{@name}.svg"
       gplot_terminal =<<GP_TERM
-set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone
+set terminal svg size #{@p_width * scale * @depth},#{@p_height * scale} mouse enhanced standalone
 set output '#{plot_output}'
 set title '#{@name.gsub('_','\_')}'
 unset xtics
@@ -283,7 +283,7 @@ GP_TERM
     when 'png'
       plot_output = "#{outdir}/#{@name}.png"
       gplot_terminal =<<GP_TERM
-set terminal png size #{@width * scale * @depth},#{@height * scale}
+set terminal png size #{@p_width * scale * @depth},#{@p_height * scale}
 set output '#{plot_output}'
 set title '#{@name.gsub('_','\_')}'
 unset xtics
