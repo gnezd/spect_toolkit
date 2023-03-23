@@ -269,23 +269,26 @@ class Scan < Array
     # Caution: variable z reused. Previously a counter for building map matrix, now indicating z layer to plot
     z = nil
 
+    dark_bg = options&.[](:dark_bg)
     case options&.[](:plot_term)
     when nil, 'svg' # Means not indicated or svg
       z = options[:z] if options[:z]
       plot_output = "#{outdir}/#{@name}.svg"
       gplot_terminal =<<GP_TERM
-set terminal svg size #{@p_width * scale * @depth},#{@p_height * scale} mouse enhanced standalone
+set terminal svg size #{@p_width * scale * @depth},#{@p_height * scale} mouse enhanced standalone #{dark_bg ? 'background "black"' : ''}
 set output '#{plot_output}'
-set title '#{@name.gsub('_','\_')}'
+set title '#{@name.gsub('_','\_')}' #{dark_bg ? "tc 'white'" : ''}
+#{dark_bg ? "set border lc 'white'" : ''}
 unset xtics
 unset ytics
 GP_TERM
     when 'png'
       plot_output = "#{outdir}/#{@name}.png"
       gplot_terminal =<<GP_TERM
-set terminal png size #{@p_width * scale * @depth},#{@p_height * scale}
+set terminal png size #{@p_width * scale * @depth},#{@p_height * scale} #{dark_bg ? 'background "black"' : ''}
 set output '#{plot_output}'
-set title '#{@name.gsub('_','\_')}'
+set title '#{@name.gsub('_','\_')}' #{dark_bg ? "tc 'white'" : ''}
+#{dark_bg ? "set border lc 'white'" : ''}
 unset xtics
 unset ytics
 GP_TERM
