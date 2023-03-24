@@ -14,7 +14,7 @@ class MappingPlotter
     @spe_path = ""
     @json_path = ""
     @scan = nil
-    @spectral_unit = ''
+    $spectral_unit = TkVariable.new
 
     # Mappings
     @map = nil
@@ -56,29 +56,62 @@ class MappingPlotter
 
     # Map operations
     @map_op_frame = Tk::Tile::LabelFrame.new(tkroot) {
-      text 'Mapping operations';
+      text 'Mapping selection mode:';
       grid('row':3, 'column': 0, 'sticky': 'ew')
     }
+
+    # Map selection modes
+    map_mode_frame = TkFrame.new(@map_op_frame){grid('row':0, 'column':0, columnspan: 3, sticky: 'ew')}
+
+    #@map_select_mode = 'pixel'
+    $map_select_mode = TkVariable.new
+    @select_sum = TkRadioButton.new(map_mode_frame){
+      grid('row':0, 'column': 0);
+      text 'sum';
+      value 'sum';
+      variable $map_select_mode
+    }
+
+    @select_px = TkRadioButton.new(map_mode_frame){
+      grid('row':0, 'column': 1);
+      text 'px';
+      value 'px';
+      variable $map_select_mode
+    }
+    
+    @select_section = TkRadioButton.new(map_mode_frame){
+      grid('row':0, 'column': 2);
+      text 'section';
+      value 'section';
+      variable $map_select_mode
+    }
+    
+    @select_section_bin = TkRadioButton.new(map_mode_frame){
+      grid('row':0, 'column': 3);
+      text 'binned section';
+      value 'binned section';
+      variable $map_select_mode
+    }
+    @select_px.select
+
     # remap
     @remap_butn = TkButton.new(@map_op_frame){
-      grid('row':0, 'column': 0);
+      grid('row':1, 'column': 0);
       text 'remap';
     }
     @remap_butn.command {remap}
-    @sum_or_pick = TkCheckButton.new(@map_op_frame){
-      grid('row':0, 'column': 1);
-      text 'sum or not'
-    }
+
     @z_selector = Tk::Tile::Combobox.new(@map_op_frame){
       textvariable @tk_z;
-      grid('row': 0, 'column':2, 'sticky': 'ew')
+      grid('row': 1, 'column':1)
     }
     @z_selector.bind("<ComboboxSelected>") {
       puts "Combobox set to #{@z_selector.get}"
       @z = @z_selector.get.to_i
     }
+
     @save_map = TkButton.new(@map_op_frame){
-      grid(row: 0, column: 3);
+      grid('row': 1, 'column': 2);
       text 'Save mapping'
     }
     @save_map.command {save_map}
@@ -110,7 +143,7 @@ class MappingPlotter
     @unit_nm = TkRadiobutton.new(@spect_unit){
       text 'nm';
       grid('row':0, 'column': 1, 'sticky': 'ew');
-      variable @spectral_unit;
+      variable $spectral_unit;
       value 'nm'
     }
     @unit_nm.command {
@@ -119,7 +152,7 @@ class MappingPlotter
     @unit_wavenumber = TkRadiobutton.new(@spect_unit){
       text 'wavenumber';
       grid('row':0, 'column': 2);
-      variable @spectral_unit;
+      variable $spectral_unit;
       value 'wavenumber'
     }
     @unit_wavenumber.command {
@@ -128,7 +161,7 @@ class MappingPlotter
     @unit_ev = TkRadiobutton.new(@spect_unit){
       text 'eV';
       grid('row':0, 'column': 3);
-      variable @spectral_unit;
+      variable $spectral_unit;
       value 'eV'
     }
     @unit_ev.command {
@@ -199,8 +232,8 @@ class MappingPlotter
     @second_quad = Tk::Tile::Notebook.new(tkroot){grid('column': 1, 'row': 4, 'sticky': 'nsew')}
 
     # Mapping function
-    mapping_func_frame = TkFrame.new(@second_quad)
-    @mapping_func = TkText.new(mapping_func_frame) {
+    @mapping_func_frame = TkFrame.new(@second_quad)
+    @mapping_func = TkText.new(@mapping_func_frame) {
       height 7;
       pack
     }
@@ -239,7 +272,7 @@ class MappingPlotter
     # Propose and plot
 
     # Add the tabs
-    @second_quad.add(mapping_func_frame, text: 'Mapping function')
+    @second_quad.add(@mapping_func_frame, text: 'Mapping function')
     @second_quad.add(@term_frame, text: 'Terminal')
     @second_quad.add(@spectra_frame, text: 'Spectra')
     @second_quad.add(@baseline_frame, text: 'Baseline')
@@ -288,7 +321,7 @@ class MappingPlotter
     selection_on_scan.map! {|e| (e+0.5).to_i}
     puts selection_on_scan.join '-'
     points = @scan.select_points(selection_on_scan[0..1]+ [@z], selection_on_scan[2..3]+ [@z])
-    if @sum_or_pick.get_value == '1'
+    if $map_select_mode == 'sum'
       @spects += [(points.map {|pt| @scan[pt[0]][pt[1]][@z][0]}).reduce(:+)]
       @spects.last.name = "sum-#{selection_on_scan.join('-')}"
       @linestyle.push "lt #{@map_selections.size}"
@@ -310,14 +343,27 @@ class MappingPlotter
     when :mousedown
       @map_clicked = true
       @map_selections.push [event.x, event.y, 0, 0]
-      rect = TkcRectangle.new(@map_canvas, event.x, event.y, event.x, event.y, outline: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
-      @map_rects.push(rect)
+      if ['sum', 'px'].include? $map_select_mode
+        rect = TkcRectangle.new(@map_canvas, event.x, event.y, event.x, event.y, outline: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
+        @map_rects.push(rect)
+      elsif $map_select_mode == 'section'
+        puts "section"
+      elsif $map_select_mode == 'binned section'
+        puts "binned section"
+      end
     when :dragging
-      @map_rects.last.coords(@map_selections.last[0], @map_selections.last[1], event.x,event.y)
+      if ['sum', 'px'].include? $map_select_mode
+        @map_rects.last.coords(@map_selections.last[0], @map_selections.last[1], event.x,event.y)
+      end
     when :mouseup
       @map_clicked = false
       @map_selections.last[2..3]=[event.x, event.y]
-      accumulate_spect
+      if ['sum', 'px'].include? $map_select_mode
+        accumulate_spect
+      else
+        coord = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
+        puts coord.join '-'
+      end
     end
   end
 
@@ -364,11 +410,11 @@ class MappingPlotter
     end
 
     @scan = Scan.new(@spe_path, File.basename(@spe_path, '.spe'), nil, {param_json: @json_path})
-    @scan.load({spectral_unit: @spectral_unit})
+    @scan.load({spectral_unit: $spectral_unit})
     # Generate z selection radiobuttons in @z_selector here
     @z_selector.configure('values', (0..@scan.depth-1).map {|z| z.to_s})
     
-    @spect_style += "set xrange [#{@scan[0][0][0][0][0][0]}:#{@scan[0][0][0][0][-1][0]}]\n" if @spectral_unit == 'wavenumber'
+    @spect_style += "set xrange [#{@scan[0][0][0][0][0][0]}:#{@scan[0][0][0][0][-1][0]}]\n" if $spectral_unit == 'wavenumber'
     remap
   end
 
