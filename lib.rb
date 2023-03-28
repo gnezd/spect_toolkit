@@ -364,6 +364,14 @@ GPLOT_HEAD
   end
   # Return a list of points in the cross section
   def section(pt1, pt2)
+    if pt1[0] == pt2[0]
+      if pt2[1] >= pt1[1]
+        return (pt1[1].to_i .. pt2[1].to_i).map {|y| [pt1[0].to_i, y]}
+      else
+        return (pt2[1].to_i .. pt1[1].to_i).map {|y| [pt1[0].to_i, y]}
+      end
+    end
+
     # P(t) = (x, y) = <pt1> + t <pt2-pt1>
     list = []
     # x lower and higher bounds
@@ -376,6 +384,7 @@ GPLOT_HEAD
       list.push [x-1, y.to_i] if x-1 >= xlb && list.last != [x-1, y.to_i]
       list.push [x, y.to_i] if list.last != [x, y.to_i]
     end
+    list.reverse! if pt1[0] > pt2[0]
     list
   end
 end
