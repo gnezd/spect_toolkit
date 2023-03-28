@@ -362,7 +362,24 @@ GPLOT_HEAD
     end
     result
   end
+  # Return a list of points in the cross section
+  def section(pt1, pt2)
+    # P(t) = (x, y) = <pt1> + t <pt2-pt1>
+    list = []
+    # x lower and higher bounds
+    xlb, xub = ([pt1[0], pt2[0]].sort).map {|x| x.to_i}
+    (xlb..xub).each do |x|
+      xt = (x.to_f - pt1[0]) / (pt2[0]-pt1[0])
+      next if xt < 0
+      break if xt > 1
+      y = pt1[1] + xt * (pt2[1]-pt1[1])
+      list.push [x-1, y.to_i] if x-1 >= xlb && list.last != [x-1, y.to_i]
+      list.push [x, y.to_i] if list.last != [x, y.to_i]
+    end
+    list
+  end
 end
+
 
 class Spectrum < Array
   attr_accessor :name, :units, :spectral_range, :signal_range, :desc

@@ -20,9 +20,11 @@ class MappingPlotter
     @map = nil
     @map_style = ''
     @z = 0
+    @roi = 0 # No UI selector yet
     # Spects 
     @baseline = nil
     @spect_plot = nil
+    @section_style = nil
 
     # Initialize scratch space
     Dir.mkdir './plotter_scratch' unless Dir.exist? './plotter_scratch'
@@ -39,7 +41,7 @@ class MappingPlotter
     # Selection state and binding
     @map_clicked = false
     @map_selections = []
-    @map_rects = []
+    @map_annot = []
     @rect_colors = ['red', 'orange', 'yellow', 'green', 'blue', 'violet']
     @map_canvas.bind("Button-1") {|e|
       selection_on_map(e, :mousedown)
@@ -210,7 +212,14 @@ class MappingPlotter
       geom = @spect_canvas.winfo_geometry.split('+')[0].split('x').map {|n| n.to_i}
       @spect_canvas.width = geom[0]-2 # Ugly fix, Sth. better is needed.
       @spect_canvas.height = geom[1]-2
-      update_spectra_plot if @spect_plot
+      if @spect_plot
+        case $map_select_mode
+        when 'px', 'sum'
+          update_spectra_plot
+        when 'section'
+          section_plot
+        end
+      end
     }
     @spect_canvas.bind("Button-1") {|e|
       mouse_on_spect(e, :mouseldown)
@@ -293,22 +302,43 @@ class MappingPlotter
     raise "@linestyle size and @spects size mismatch" unless @linestyle.size == @spects.size
 
     # Inject coloring here!!
-    spect_style = @spect_style + "set linetype cycle #{@rect_colors.size}\n"
+    spect_style = @spect_style + "set linetype cycle #{@rect_colors.size}\n" # Danger!!
     @rect_colors.each_with_index do |color, i|
       spect_style += "set linetype #{i+1} lc rgb \"#{color}\" \n"
     end
     @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./plotter_scratch/#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
     @spect_plot.plot_to @spect_canvas
   end
+  
+  def section_plot
+    data_f_name = "./plotter_scratch/#{@scan.name}-section-#{@selection_on_scan.join('-')}"
+    data_fout = File.open(data_f_name+'.tsv', 'w')
+    @spects.each do |spect|
+      data_fout.puts (spect.map{|pt| pt[1]}).join ' '
+    end
+    data_fout.close
+    gplot_out = File.open(data_f_name+'.gplot', 'w')
+    gplot_content = <<EOG
+set terminal tkcanvas ruby size #{@spect_canvas.width},#{@spect_canvas.height}
+set output '#{data_f_name}.rb'
+#{@section_style}
+plot '#{data_f_name}.tsv' matrix w image pixel
+EOG
+    gplot_out.puts gplot_content
+    gplot_out.close
+    `gnuplot '#{data_f_name}.gplot'`
+    @spect_plot = RbTkCanvas.new(data_f_name+'.rb')
+    @spect_plot.plot_to @spect_canvas
+  end
 
   def clear_spectra
     @spects = []
     @map_selections = []
-    @map_rects.each do |rect|
-      rect.delete
-      rect.destroy
+    @map_annot.each do |shape|
+      shape.delete
+      shape.destroy
     end
-    @map_rects = []
+    @map_annot = []
     @linestyle = []
   end
 
@@ -317,26 +347,42 @@ class MappingPlotter
     # Coordinate conversion
     # Extract to reuse with spect selection?
     # RCanvs will then own its RbTkCanvas?
-    selection_on_scan = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
-    selection_on_scan.map! {|e| (e+0.5).to_i}
-    puts selection_on_scan.join '-'
-    points = @scan.select_points(selection_on_scan[0..1]+ [@z], selection_on_scan[2..3]+ [@z])
-    if $map_select_mode == 'sum'
-      @spects += [(points.map {|pt| @scan[pt[0]][pt[1]][@z][0]}).reduce(:+)]
-      @spects.last.name = "sum-#{selection_on_scan.join('-')}"
+    
+    @selection_on_scan = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
+    # Watchout! Danger of @selection_on_scan not updated!
+    
+    @selection_on_scan.map! {|e| (e+0.5).to_i}
+    puts @selection_on_scan.join '-'
+
+    case $map_select_mode
+    when 'sum'
+      points = @scan.select_points(@selection_on_scan[0..1]+ [@z], @selection_on_scan[2..3]+ [@z])
+      @spects += [(points.map {|pt| @scan[pt[0]][pt[1]][@z][@roi]}).reduce(:+)]
+      @spects.last.name = "sum-#{@selection_on_scan.join('-')}"
       @linestyle.push "lt #{@map_selections.size}"
-    else
-      newspects = points.map {|pt| @scan[pt[0]][pt[1]][@z][0]}
+      update_spectra_plot
+    when 'px'
+      points = @scan.select_points(@selection_on_scan[0..1]+ [@z], @selection_on_scan[2..3]+ [@z])
+      newspects = points.map {|pt| @scan[pt[0]][pt[1]][@z][@roi]}
       @spects += newspects
       @linestyle += ["lt #{@map_selections.size}"] * newspects.size
       # Check: spectrum naming?
+      update_spectra_plot
+    when 'section', 'section binned'
+      points = @scan.section(@selection_on_scan[0..1], @selection_on_scan[2..3])
+      newspects = points.map{|pt| @scan[pt[0]][pt[1]][@z][@roi]}
+      newspects.each_index do |i|
+        newspects[i].name = "section-#{@selection_on_scan.join('-')}-#{i}"
+        @linestyle += ["lt #{i}"]
+      end
+      @spects = newspects
+      section_plot
+    else
     end
 
-    update_spectra_plot
 
   end
-
-
+  
   # Update selection square
   def selection_on_map(event, state) #Is state somewhat embedded in event? This for now.
     case state
@@ -345,25 +391,20 @@ class MappingPlotter
       @map_selections.push [event.x, event.y, 0, 0]
       if ['sum', 'px'].include? $map_select_mode
         rect = TkcRectangle.new(@map_canvas, event.x, event.y, event.x, event.y, outline: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
-        @map_rects.push(rect)
+        @map_annot.push(rect)
       elsif $map_select_mode == 'section'
-        puts "section"
+        line = TkcLine.new(@map_canvas, event.x, event.y, event.x, event.y, fill: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
+        @map_annot.push(line)
       elsif $map_select_mode == 'binned section'
-        puts "binned section"
+        line = TkcLine.new(@map_canvas, event.x, event.y, event.x, event.y, fill: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
+        @map_annot.push(line)
       end
     when :dragging
-      if ['sum', 'px'].include? $map_select_mode
-        @map_rects.last.coords(@map_selections.last[0], @map_selections.last[1], event.x,event.y)
-      end
+      @map_annot.last.coords(@map_selections.last[0], @map_selections.last[1], event.x,event.y)
     when :mouseup
       @map_clicked = false
       @map_selections.last[2..3]=[event.x, event.y]
-      if ['sum', 'px'].include? $map_select_mode
-        accumulate_spect
-      else
-        coord = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
-        puts coord.join '-'
-      end
+      accumulate_spect
     end
   end
 
@@ -410,7 +451,7 @@ class MappingPlotter
     end
 
     @scan = Scan.new(@spe_path, File.basename(@spe_path, '.spe'), nil, {param_json: @json_path})
-    @scan.load({spectral_unit: $spectral_unit})
+    @scan.load({spectral_unit: $spectral_unit.to_s})
     # Generate z selection radiobuttons in @z_selector here
     @z_selector.configure('values', (0..@scan.depth-1).map {|z| z.to_s})
     
