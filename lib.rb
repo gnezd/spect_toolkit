@@ -368,7 +368,7 @@ GPLOT_HEAD
       if pt2[1] >= pt1[1]
         return (pt1[1].to_i .. pt2[1].to_i).map {|y| [pt1[0].to_i, y]}
       else
-        return (pt2[1].to_i .. pt1[1].to_i).map {|y| [pt1[0].to_i, y]}
+        return ((pt2[1].to_i .. pt1[1].to_i).map {|y| [pt1[0].to_i, y]}).reverse
       end
     end
 
