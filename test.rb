@@ -757,6 +757,13 @@ def load_scan_from_unbinned_spe
   puts scan[0][0][0][0][0..5]
 end
 
+def test_fwhm
+  spect = Spectrum.new('./testdata/spectra/16.tsv')
+  plot_spectra([spect], out_dir: 'scratch')
+  puts spect.fwhm(peak: 23808)
+end
+
+test_fwhm
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
 #tkcanvas_plot_test
@@ -765,7 +772,7 @@ end
 #read_image_spe_benchmark
 #read_spectra_spe_test
 #read_spectra_spe_benchmark
-plot_map_test
+#plot_map_test
 #adpl_test
 #multi_roi_spe_test
 #multi_roi_scan_test

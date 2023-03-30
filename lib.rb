@@ -701,7 +701,7 @@ class Spectrum < Array
   end
   
   def max
-    memory = [0.0, 0.0]
+    memory = self[0]
     self.each do |pt|
       memory = pt if (pt[1] >= memory[1])
     end
@@ -709,7 +709,7 @@ class Spectrum < Array
   end
 
   def min
-    memory = [0.0, 0.0]
+    memory = self[0]
     self.each do |pt|
       memory = pt if (pt[1] <= memory[1])
     end
@@ -733,6 +733,43 @@ class Spectrum < Array
     end
     result.update_info
     result
+  end
+  
+  # Full width half maximum
+  def fwhm(options={})
+    median = (max[1].to_f - min[1])/2 + min[1]
+    if self[0][0] > self[-1][0]
+      is_wv = true
+      self.reverse!
+    end
+    if options[:peak]
+      #find peak index
+      self.each_with_index do |pt, i|
+        segment = [pt[0], self[i+1][0]].sort
+        # Segment contains peak
+        if segment[0] <= options[:peak] && options[:peak] <= segment[1]
+          ls = rs = self[i]
+          # Find right shoulder
+          self[i..-1].each do |rpts|
+            if rpts[1] <= median
+              rs = rpts 
+              break
+            end
+          end
+          # Find left shoulder
+          self[0..i].reverse.each do |lpts|
+            if lpts[1] <= median
+              ls = lpts 
+              break
+            end
+          end
+          puts "ls: #{ls}, rs: #{rs}"
+          break
+        end
+      end
+    end
+    self.reverse! if is_wv
+    return 0
   end
 end
 
