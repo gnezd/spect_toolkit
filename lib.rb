@@ -764,6 +764,7 @@ class Spectrum < Array
             end
           end
           puts "ls: #{ls}, rs: #{rs}"
+          return rs[0]-ls[0]
           break
         end
       end
