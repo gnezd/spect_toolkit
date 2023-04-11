@@ -10,7 +10,7 @@ require 'json'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :loaded, :spe, :s_scan
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :loaded, :spe, :s_scan, :bin_to_spect
   def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
@@ -28,6 +28,7 @@ class Scan < Array
       @p_height = scan_param['Size Y (um)'].to_f
       @p_depth = scan_param['Size Z (um)'].to_f
       @s_scan = scan_param['S-shape scan']
+      @bin_to_spect = scan_param['Binning']
     end
 
     @loaded = false
@@ -37,6 +38,7 @@ class Scan < Array
   end
 
   def load(options = {})
+    options[:bin_to_spect] = @bin_to_spect
     puts options
     case File.extname @path
     when /\.[cC][sS][vV]/
@@ -115,11 +117,12 @@ class Scan < Array
   def load_spe(options)
     # File read
     debug = options[:debug]
+    # BIN to spectrum here
+    options[:bin_to_spect] = true unless options[:bin_to_spect]
+
     puts "loading spe #{@path} with options #{options}."
     puts "Reading spe at #{Time.now}" if debug
     
-    # BIN to spectrum here
-    options[:bin_to_spect] = true
     @spe = Spe.new @path, @name, options
     puts "Spe reading complete at #{Time.now}. Start scan building." if debug
 
@@ -129,6 +132,7 @@ class Scan < Array
     # Spectrum building
     i = 0
     while i < @width
+      puts "i=#{i}" if debug
       j = 0
       while j < @height
         if j % 2 == 1 && @s_scan == true
@@ -825,19 +829,20 @@ class Spe < Array
     raise "No such file #{@path}" unless File.exist? path
     @bin_to_spect = options[:bin_to_spect]
     
-    # Sluuurp
     puts "Loading spe file #{@path} at #{Time.now}" if debug
     fin = File.open @path, 'rb'
-    raw = fin.read(fin.size).freeze
+    
+    # Rewrite while reading PI documentation on SPE 3.0 format
+    # And sluuurp (x)
+    # perform a civilized segmented reading (o)
+    bin_head = fin.read(4100).freeze
+    xml_index = bin_head[678..685].unpack1('Q')
+    @bin_data = fin.read(xml_index - 4100).freeze
+    xml_raw = fin.read().freeze # All the rest goes to xml
     fin.close
-    puts "Finished reading spe at #{Time.now}" if debug
 
-    # Obtain xml index and unpack binary
-    xml_index = raw[678..685].unpack1('Q')
-    xml_raw = raw[xml_index..-1]
-    binary_data = raw[0x1004..xml_index-1].freeze
-    unpacked_counts = binary_data.unpack('S*').freeze
-    puts "Unpacked binary has a lenght of: #{unpacked_counts.size}" if debug
+    puts "Finished reading spe at #{Time.now}" if debug
+    puts "Binary data has a lenght of: #{@bin_data.size}" if debug
     
     # Starting position of xml part
     @xml = Nokogiri.XML(xml_raw)
@@ -888,7 +893,7 @@ class Spe < Array
       wavelengths_nm += wavelengths_mapping[@rois[i][:x] .. @rois[i][:x]+@rois[i][:data_width]-1]
       puts "W: #{@rois[i][:width]} / #{@rois[i][:xbinning]} H: #{@rois[i][:height]} / #{@rois[i][:ybinning]}" if debug
     end
-    raise "0_o unpacked ints has a length of #{unpacked_counts.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize}." unless unpacked_counts.size == @frames * @framesize
+    raise "0_o binary data have a length of #{@bin_data.size} for #{@name}. With framesize #{@framesize} we expect #{frames} * #{@framesize} * 2 bytes/px." unless @bin_data.size == @frames * @framesize * 2
 
     
     # @data_creation, @file_creation, @file_modified
@@ -930,9 +935,6 @@ class Spe < Array
     else
       puts "#{@name} has images in frames of shape #{@rois}\n Loading." if debug
     end
-    
-    # Regardless of roi situation, just store unpacked_counts
-    super unpacked_counts
   end
 
   # Universal accesor for all regardless of spectrum or image containing Spes
@@ -944,7 +946,7 @@ class Spe < Array
       result = Array.new(@rois[roin][:data_height]) {Array.new(@rois[roin][:data_width]) {0}}
       yi = 0
       while yi < @rois[roin][:data_height]
-        result[yi] = self[frame * @framesize + yi * @rois[roin][:data_width] .. frame * @framesize + (yi+1) * @rois[roin][:data_width] -1]
+        result[yi] = @bin_data[(frame * @framesize + yi * @rois[roin][:data_width])*2 .. (frame * @framesize + (yi+1) * @rois[roin][:data_width] -1)*2+1].unpack('S*')
         yi += 1
       end
       return result.transpose
@@ -963,11 +965,18 @@ class Spe < Array
 
       # Binning needed
       if @bin_to_spect
+        if @bin_to_spect.is_a? Array
+          bin_range = @bin_to_spect 
+        else
+          bin_range = [0, @rois[roin][:data_height]]
+        end
+
         while xi < @rois[roin][:data_width]
           result[xi] = [@wv[xi + roishift], 0]
-          yi = 0
-          while yi < @rois[roin][:data_height]
-            result[xi][1] += self[frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi]
+          yi = bin_range[0]
+          while yi < bin_range[1]
+            raise "frame #{frame} #{xi} #{yi}"unless @bin_data[(frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi)*2 .. (frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi)*2 +1].unpack1('S')
+            result[xi][1] += @bin_data[(frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi)*2 .. (frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi)*2 +1].unpack1('S')
             yi += 1
           end
           xi += 1
@@ -976,7 +985,7 @@ class Spe < Array
       else
         while xi < @rois[roin][:data_width]
           result[xi] = [@wv[xi + roishift], 
-          self[frame * @framesize + roishift + xi]]
+          @bin_data[(frame * @framesize + roishift + xi)*2 .. (frame * @framesize + roishift + xi)*2 +1].unpack1('S')]
           xi += 1
         end
       end
