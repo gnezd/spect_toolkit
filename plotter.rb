@@ -49,6 +49,8 @@ class MappingPlotter
     @map_canvas.bind("Motion") do |e| 
       if @map_clicked
         selection_on_map(e, :dragging)
+      elsif @sideways_selection
+        selection_on_map(e, :sideways)
       end
     end
     @map_canvas.bind("ButtonRelease-1") {|e|
@@ -368,7 +370,7 @@ EOG
       @linestyle += ["lt #{@map_selections.size}"] * newspects.size
       # Check: spectrum naming?
       update_spectra_plot
-    when 'section', 'section binned'
+    when 'section'
       points = @scan.section(@selection_on_scan[0..1], @selection_on_scan[2..3])
       newspects = points.map{|pt| @scan[pt[0]][pt[1]][@z][@roi]}
       newspects.each_index do |i|
@@ -377,6 +379,7 @@ EOG
       end
       @spects = newspects
       section_plot
+    when 'section binned'
     else
     end
 
@@ -387,25 +390,85 @@ EOG
   def selection_on_map(event, state) #Is state somewhat embedded in event? This for now.
     case state
     when :mousedown
-      @map_clicked = true
-      @map_selections.push [event.x, event.y, 0, 0]
+        @map_clicked = true
       if ['sum', 'px'].include? $map_select_mode
+        @map_selections.push [event.x, event.y, 0, 0]
         rect = TkcRectangle.new(@map_canvas, event.x, event.y, event.x, event.y, outline: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
         @map_annot.push(rect)
       elsif $map_select_mode == 'section'
+        @map_selections.push [event.x, event.y, 0, 0]
         line = TkcLine.new(@map_canvas, event.x, event.y, event.x, event.y, fill: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
         @map_annot.push(line)
       elsif $map_select_mode == 'binned section'
-        line = TkcLine.new(@map_canvas, event.x, event.y, event.x, event.y, fill: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
-        @map_annot.push(line)
+        if @sideways_selection
+          coord = @map.canvas_coord_to_plot_coord([event.x, event.y])
+          axis = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
+          binned_section_plot(axis, coord)
+          box = TkcPolygon.new(@map_canvas, 
+            @map_selections.last[0], @map_selections.last[1], 
+            @map_selections.last[2], @map_selections.last[3], 
+            @map_selections.last[2], @map_selections.last[3], 
+            @map_selections.last[0], @map_selections.last[1])
+          @map_annot.push(box)
+        else
+          @map_selections.push [event.x, event.y, 0, 0]
+          line = TkcLine.new(@map_canvas, event.x, event.y, event.x, event.y, fill: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
+          @map_annot.push(line)
+        end
       end
     when :dragging
-      @map_annot.last.coords(@map_selections.last[0], @map_selections.last[1], event.x,event.y)
+      if $map_select_mode == 'binned section' && @sideways_selection
+      else
+        @map_annot.last.coords(@map_selections.last[0], @map_selections.last[1], event.x,event.y)
+      end
     when :mouseup
       @map_clicked = false
-      @map_selections.last[2..3]=[event.x, event.y]
-      accumulate_spect
+      if $map_select_mode == 'binned section'
+        if @sideways_selection
+          @sideways_selection = false
+        else
+          @map_selections.last[2..3]=[event.x, event.y]
+          @sideways_selection = true
+        end
+      else
+        @map_selections.last[2..3]=[event.x, event.y]
+        accumulate_spect
+      end
+    when :sideways
+      # Update polygon
+      vec = section_vector(@map_selections.last, [event.x, event.y])
+      @map_annot.last.coords(@map_selections.last[2] + vec[0], @map_selections.last[3] + vec[1],
+                            @map_selections.last[0] + vec[0], @map_selections.last[1] + vec[1], 
+                            @map_selections.last[0] - vec[0], @map_selections.last[1] - vec[1],
+                            @map_selections.last[2] - vec[0], @map_selections.last[3] - vec[1])
     end
+  end
+
+  # Compute section vector
+  def section_vector(axis, coord)
+    # Catch horizontal
+    return [0, axis[1]-coord[1]] if axis[1] == axis[3]
+    return [axis[0] - coord[0], 0] if axis[0] == axis[2]
+    
+    # Compute x and y intersects
+    ix = axis[2] - (axis[3].to_f - coord[1])*(axis[2] - axis[0]) / (axis[3] - axis[1]) - coord[0]
+    iy = axis[3] - (axis[2].to_f - coord[0])*(axis[3] - axis[1]) / (axis[2] - axis[0]) - coord[1]
+    return [0,0] if ix==0 || iy==0
+    return [ix*(iy**2)/(ix**2+iy**2), iy*(ix**2) / (ix**2 + iy**2)]
+  end
+
+  # Project coord onto axis and get the parameter t
+  def get_t(axis, coord)
+    vec = section_vector(axis, coord)
+    pt_aligned = [coord[0] + vec[0], coord[1] + vec[1]]
+    c = [pt_aligned[0] - axis[0], pt_aligned[1] - axis[1]]
+    t = (c[0].to_f/(axis[2]-axis[0]) + c[1].to_f/(axis[3]-axis[1]))/2
+  end
+
+  # Compute binned section and plot
+  def binned_section_plot(axis, coord)
+    puts "Axis: #{axis.join('-')}"
+    puts "sideway spanned to #{coord.join('-')}"
   end
 
   def mouse_on_spect(event, state)
@@ -418,7 +481,7 @@ EOG
         @spect_ranging = true
         @spect_selection[0] = coord
         @spect_range_highlight.delete if defined? @spect_range_highlight
-        @spect_range_highlight = TkcRectangle.new(@spect_canvas, event.x, 10, event.x, @spect_canvas.height*0.9, outline: 'red')
+        @spect_range_highlight = TkcRectangle.new(@spect_canvas, event.x, 10, event.x, @spect_canvas.height, outline: 'red')
         @orig=[event.x, event.y]
       end
     when :mouserdown
@@ -427,7 +490,7 @@ EOG
       @spect_ranging = false
     when :ranging
       @spect_selection[1] = coord
-      @spect_range_highlight.coords(@orig[0], 10, event.x, @spect_canvas.height*0.9)
+      @spect_range_highlight.coords(@orig[0], 10, event.x, @spect_canvas.height)
     when :mouseup
     end
   end
