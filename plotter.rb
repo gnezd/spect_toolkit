@@ -401,15 +401,9 @@ EOG
         @map_annot.push(line)
       elsif $map_select_mode == 'binned section'
         if @sideways_selection
-          coord = @map.canvas_coord_to_plot_coord([event.x, event.y])
+          coords = (0..3).map {|i| @map.canvas_coord_to_plot_coord(@map_annot.last.coords[2*i..2*i+1])}
           axis = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
-          binned_section_plot(axis, coord)
-          box = TkcPolygon.new(@map_canvas, 
-            @map_selections.last[0], @map_selections.last[1], 
-            @map_selections.last[2], @map_selections.last[3], 
-            @map_selections.last[2], @map_selections.last[3], 
-            @map_selections.last[0], @map_selections.last[1])
-          @map_annot.push(box)
+          binned_section_plot(axis, coords)
         else
           @map_selections.push [event.x, event.y, 0, 0]
           line = TkcLine.new(@map_canvas, event.x, event.y, event.x, event.y, fill: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
@@ -436,11 +430,11 @@ EOG
       end
     when :sideways
       # Update polygon
-      vec = section_vector(@map_selections.last, [event.x, event.y])
-      @map_annot.last.coords(@map_selections.last[2] + vec[0], @map_selections.last[3] + vec[1],
-                            @map_selections.last[0] + vec[0], @map_selections.last[1] + vec[1], 
-                            @map_selections.last[0] - vec[0], @map_selections.last[1] - vec[1],
-                            @map_selections.last[2] - vec[0], @map_selections.last[3] - vec[1])
+      @vec = section_vector(@map_selections.last, [event.x, event.y])
+      @map_annot.last.coords(@map_selections.last[2] + @vec[0], @map_selections.last[3] + @vec[1],
+                            @map_selections.last[0] + @vec[0], @map_selections.last[1] + @vec[1], 
+                            @map_selections.last[0] - @vec[0], @map_selections.last[1] - @vec[1],
+                            @map_selections.last[2] - @vec[0], @map_selections.last[3] - @vec[1])
     end
   end
 
@@ -466,9 +460,50 @@ EOG
   end
 
   # Compute binned section and plot
-  def binned_section_plot(axis, coord)
+  def binned_section_plot(axis, box)
+    @vec_on_scan = [(box[2][0]-box[1][0])/2, (box[2][1]-box[1][1])/2]
     puts "Axis: #{axis.join('-')}"
-    puts "sideway spanned to #{coord.join('-')}"
+    puts "sideway spanned with vector #{@vec_on_scan}"
+    puts "to form box #{box}"
+    xrange = ((0..3).map{|i| box[i][0].to_i}).minmax
+    yrange = ((0..3).map{|i| box[i][1].to_i}).minmax
+    puts "collecting points from #{xrange} x #{yrange}"
+    ptlist = []
+    (xrange[0] .. xrange[1]).each do |x|
+      (yrange[0] .. yrange[1]).each do |y|
+        t = get_t(axis, [x,y])
+        this_vec = section_vector(axis, [x,y])
+        #puts "-----"
+        #puts "pt #{x} - #{y} under consideration"
+        #puts "t: #{t} vec: #{this_vec}"
+        ptlist.push [t, x, y] if t <= 1 && t > 0 && this_vec[0]**2 < @vec_on_scan[0]**2
+        #puts "INNNN" if t <= 1 && t > 0 && this_vec[0]**2 < @vec_on_scan[0]**2
+      end
+    end
+    #puts ptlist.map {|i| "#{i.join('-')}"}
+    ptlist.sort_by! {|pt| pt[0]}
+
+    puts "collected #{ptlist.size} points with t ranging from #{ptlist.map{|pt| pt[0]}.minmax}"
+    binwidth = ((@vec_on_scan[0]**2 + @vec_on_scan[1]**2)**0.5)*2
+    puts "estimated width is #{binwidth}"
+
+    binned = []
+    while ptlist.size > 0
+      binned.push ptlist.shift(binwidth.to_i)
+    end
+    
+    #puts "binned: #{binned}"
+    puts "binned t: #{binned.map{|bin| (bin.map{|pt| pt[0]}).sum/bin.size}}"
+
+    # First forget about t resampling
+
+    @spects = []
+    binned.each do |bin|
+      spect = (bin.map{|pt| @scan[pt[1]][pt[2]][@z][@roi]}).reduce(:+) / bin.size
+      @spects.push spect
+    end
+    @selection_on_scan = box.map{|pt| pt.map{|value| value.to_i}}
+    section_plot
   end
 
   def mouse_on_spect(event, state)
