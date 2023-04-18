@@ -503,6 +503,8 @@ EOG
       @spects.push spect
     end
     @selection_on_scan = box.map{|pt| pt.map{|value| value.to_i}}
+    @map_clicked = false
+    @sideways_selection = false
     section_plot
   end
 
