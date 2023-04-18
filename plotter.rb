@@ -500,11 +500,10 @@ EOG
     @spects = []
     binned.each do |bin|
       spect = (bin.map{|pt| @scan[pt[1]][pt[2]][@z][@roi]}).reduce(:+) / bin.size
+      spect.name = @scan.name + 'bnsection-' + axis.map{|pt| pt.to_i}.join('-') + '-' + ("%.2f" % bin[0][0])
       @spects.push spect
     end
     @selection_on_scan = box.map{|pt| pt.map{|value| value.to_i}}
-    @map_clicked = false
-    @sideways_selection = false
     section_plot
   end
 

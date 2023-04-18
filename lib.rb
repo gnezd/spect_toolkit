@@ -594,6 +594,7 @@ class Spectrum < Array
     if input.is_a? Numeric
       self.each {|pt| result.push([pt[0], pt[1].to_f / input.to_f])}
       result.name = @name + "d#{input}"
+      result.units = @units
       result.update_info
     elsif input.is_a? Spectrum
       resampled = align_with(input)
@@ -601,6 +602,8 @@ class Spectrum < Array
         result[i] = [resampled[0][i][0], resampled[0][i][1] / resampled[1][i][1]]
       end
       result.name = @name+'-'+input.name
+      result.units = @units
+      result.units[1] = 'a.u.'
     else
       raise "Deviding by sth strange! #{input.class} is not defined as a denominator."
     end
