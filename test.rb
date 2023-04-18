@@ -760,7 +760,8 @@ end
 def test_fwhm
   spect = Spectrum.new('./testdata/spectra/16.tsv')
   plot_spectra([spect], out_dir: 'scratch')
-  puts spect.fwhm(peak: 23808)
+  puts spect.fwhm()
+  puts spect.fwhm(peak: spect.max[0])
 end
 
 test_fwhm

@@ -744,40 +744,54 @@ class Spectrum < Array
   
   # Full width half maximum
   def fwhm(options={})
-    median = (max[1].to_f - min[1])/2 + min[1]
+    # Defaults
+    median = (max[1].to_f + min[1])/2
+    peak = (self.max)[0]
+    result = 0
+    
+    # If a peak is given
+    if options[:peak]
+      peak = options[:peak] 
+      median = self.resample([peak])[0]
+      puts "Value found: #{median}"
+      median = (median[1] + self.min[1])/2
+    end
+    
+    # If spectral scale in reverse
     if self[0][0] > self[-1][0]
+      puts "Spectral scale reverse"
       is_wv = true
       self.reverse!
     end
-    if options[:peak]
-      #find peak index
-      self.each_with_index do |pt, i|
-        segment = [pt[0], self[i+1][0]].sort
-        # Segment contains peak
-        if segment[0] <= options[:peak] && options[:peak] <= segment[1]
-          ls = rs = self[i]
-          # Find right shoulder
-          self[i..-1].each do |rpts|
-            if rpts[1] <= median
-              rs = rpts 
-              break
-            end
+
+    # Find peak index
+    self.each_with_index do |pt, i|
+      segment = [pt[0], self[i+1][0]].sort
+      # Segment contains peak
+      if segment[0] <= peak && peak <= segment[1]
+        ls = rs = self[i]
+        # Find right shoulder
+        self[i..-1].each do |rpts|
+          if rpts[1] <= median
+            rs = rpts 
+            break
           end
-          # Find left shoulder
-          self[0..i].reverse.each do |lpts|
-            if lpts[1] <= median
-              ls = lpts 
-              break
-            end
-          end
-          puts "ls: #{ls}, rs: #{rs}"
-          return rs[0]-ls[0]
-          break
         end
+        # Find left shoulder
+        self[0..i].reverse.each do |lpts|
+          if lpts[1] <= median
+            ls = lpts 
+            break
+          end
+        end
+        puts "ls: #{ls}"
+        puts "rs: #{rs}"
+        result = rs[0]-ls[0]
+        break
       end
     end
     self.reverse! if is_wv
-    return 0
+    return result
   end
 end
 
