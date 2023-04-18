@@ -477,10 +477,8 @@ EOG
         #puts "pt #{x} - #{y} under consideration"
         #puts "t: #{t} vec: #{this_vec}"
         ptlist.push [t, x, y] if t <= 1 && t > 0 && this_vec[0]**2 < @vec_on_scan[0]**2
-        #puts "INNNN" if t <= 1 && t > 0 && this_vec[0]**2 < @vec_on_scan[0]**2
       end
     end
-    #puts ptlist.map {|i| "#{i.join('-')}"}
     ptlist.sort_by! {|pt| pt[0]}
 
     puts "collected #{ptlist.size} points with t ranging from #{ptlist.map{|pt| pt[0]}.minmax}"
@@ -492,16 +490,37 @@ EOG
       binned.push ptlist.shift(binwidth.to_i)
     end
     
-    #puts "binned: #{binned}"
-    puts "binned t: #{binned.map{|bin| (bin.map{|pt| pt[0]}).sum/bin.size}}"
+    t_list = binned.map{|bin| (bin.map{|pt| pt[0]}).sum/bin.size}
+    puts "binned t: #{t_list}"
 
-    # First forget about t resampling
-
-    @spects = []
+    uneven_spects = []
     binned.each do |bin|
       spect = (bin.map{|pt| @scan[pt[1]][pt[2]][@z][@roi]}).reduce(:+) / bin.size
-      @spects.push spect
+      uneven_spects.push spect
     end
+    
+    # Perform t-resampling
+    # Approach: we wish to preserve the spacing regardless of section angle orientation
+    t_spacing = (t_list[-1].to_f - t_list[0]) / ((box[1][0] - box[0][0])**2 + (box[1][1]-box[0][1])**2)**0.5
+    @spects = []
+
+    # The real resampling
+    t = 0.0
+    binned.each_with_index do |line, i|
+      next if i == 0
+      break if i+1 == bin.size
+      while t < line[0]
+        next if t < bin[i-1][0]
+        # Interpolate
+        puts "Doing t = #{t}"
+        spect = (uneven_spects[i-1] * (t-bin[i-1][0]) + uneven_spects[i] * (line[0]-t)) / (line[0]-bin[i-1][0])
+        @spects.push spect
+        t += t_spacing
+        break if t>1
+      end
+    end
+
+
     @selection_on_scan = box.map{|pt| pt.map{|value| value.to_i}}
     @map_clicked = false
     @sideways_selection = false
