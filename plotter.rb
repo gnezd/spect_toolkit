@@ -307,28 +307,12 @@ class MappingPlotter
     @spect_plot = RbTkCanvas.new(plot_spectra(@spects, {out_dir: "./plotter_scratch/#{@scan.name}spect", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height, linestyle: @linestyle}))
     @spect_plot.plot_to @spect_canvas
   end
-  
-  def section_plot
-    data_f_name = "./plotter_scratch/#{@scan.name}-section-#{@selection_on_scan.join('-')}"
-    # 以上plotter specific
-    data_fout = File.open(data_f_name+'.tsv', 'w')
-    @spects.each do |spect|
-      data_fout.puts (spect.map{|pt| pt[1]}).join ' '
-    end
-    data_fout.close
-    gplot_out = File.open(data_f_name+'.gplot', 'w')
-    gplot_content = <<EOG
-set terminal tkcanvas ruby size #{@spect_canvas.width},#{@spect_canvas.height}
-set output '#{data_f_name}.rb'
-#{@section_style}
-plot '#{data_f_name}.tsv' matrix w image pixel
-EOG
-    gplot_out.puts gplot_content
-    gplot_out.close
-    `gnuplot '#{data_f_name}.gplot'`
-    @spect_plot = RbTkCanvas.new(data_f_name+'.rb')
+
+  def update_section_plot
+    @spect_plot = RbTkCanvas.new(section_plot(@spects, {out_dir: "./plotter_scratch/#{@scan.name}-section", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height}))
     @spect_plot.plot_to @spect_canvas
   end
+  
 
   def clear_spectra
     @spects = []
@@ -374,9 +358,16 @@ EOG
         newspects[i].name = "section-#{@selection_on_scan.join('-')}-#{i}"
         @linestyle += ["lt #{i}"]
       end
+      # Perform uniform t sampling to newspects here
       @spects = newspects
-      section_plot
-    when 'section binned'
+      update_section_plot
+    when 'binned section'
+      # Return spects but not set of points for now
+      @spects = @scan.binned_section(@section_axis, @section_box)
+
+
+
+      update_spectra_plot
     else
     end
 
@@ -400,7 +391,6 @@ EOG
         if @sideways_selection
           coords = (0..3).map {|i| @map.canvas_coord_to_plot_coord(@map_annot.last.coords[2*i..2*i+1])}
           axis = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
-          binned_section_plot(axis, coords)
         else
           @map_selections.push [event.x, event.y, 0, 0]
           line = TkcLine.new(@map_canvas, event.x, event.y, event.x, event.y, fill: @rect_colors[(@map_selections.size-1) % @rect_colors.size])
@@ -424,10 +414,11 @@ EOG
       @map_clicked = false
       if $map_select_mode == 'binned section'
         if @sideways_selection
-          coords = (0..3).map {|i| @map.canvas_coord_to_plot_coord(@map_annot.last.coords[2*i..2*i+1])}
-          axis = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
-          binned_section_plot(axis, coords)
+          @section_box = (0..3).map {|i| @map.canvas_coord_to_plot_coord(@map_annot.last.coords[2*i..2*i+1])}
+          @section_axis = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
           @sideways_selection = false
+          #binned_section_plot(axis, coords)
+          accumulate_spect
         else
           @map_selections.last[2..3]=[event.x, event.y]
           @sideways_selection = true

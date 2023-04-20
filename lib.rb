@@ -368,7 +368,7 @@ GPLOT_HEAD
     result
   end
   # Return a list of points in the cross section
-  def section(pt1, pt2)
+  def section(pt1, pt2, options = {})
     if pt1[0] == pt2[0]
       if pt2[1] >= pt1[1]
         return (pt1[1].to_i .. pt2[1].to_i).map {|y| [pt1[0].to_i, y]}
@@ -392,6 +392,12 @@ GPLOT_HEAD
     list.reverse! if pt1[0] > pt2[0]
     list
   end
+
+  def binned_section(axis, box)
+    list = []
+    list
+  end
+
 end
 
 
@@ -1188,10 +1194,57 @@ GPLOT_HEADER
   return plot_output
 end
 
-# Quick 'n dirty func. to convert plot coord. to piezo coord.
-def coord_conv(pl_scan_orig, orig_dim, map_dimension, coord)
-  return [coord[0].to_f/map_dimension[0]*orig_dim[0]+pl_scan_orig[0], coord[1].to_f/map_dimension[1]*orig_dim[1]+pl_scan_orig[1]]
+def section_plot(spectra, options = {})
+
+  debug = options[:debug]
+  raise "Not an array of spectra input." unless (spectra.is_a? Array) && (spectra.all? Spectrum)
+  width = options['plot_width'] ? options['plot_width'].to_i : 800
+  height = options['plot_height'] ? options['plot_height'].to_i : 600
+
+  # Check if they align in x_units
+  x_units = spectra.map {|spectrum| spectrum.units[0]}
+  if !(x_units.all? {|unit| unit == x_units[0]})
+    raise "Some spectra have different units: #{x_units}" 
+  end
+
+  if options[:out_dir]
+    outdir = options[:out_dir]
+  else
+    outdir = "section-" + Time.now.strftime("%d%b-%H%M%S")
+  end
+  
+  puts "Ploting to #{outdir}" if debug
+  Dir.mkdir outdir unless Dir.exist? outdir
+
+  data_fout = File.open(outdir+'/section-matrix.tsv', 'w')
+  @spects.each do |spect|
+    data_fout.puts (spect.map{|pt| pt[1]}).join ' '
+  end
+  data_fout.close
+
+  # Switching canvas type
+  case options&.[](:plot_term)
+  when nil, 'svg' # Means not indicated or svg
+    plot_output = "#{outdir}/section.svg"
+    set_term = "set terminal svg size #{width},#{height} enhanced standalone"
+  when 'png'
+  when 'tkcanvas-rb'
+    plot_output = "#{outdir}/section.rb"
+    set_term = "set terminal tkcanvas ruby size #{width},#{height}"
+  end
+    gplot_content = <<EOGP
+#{set term}
+set output '#{plot_output}'
+#{@section_style}
+plot '#{outdir}/section-matrix.tsv' matrix w image pixel
+EOGP
+  gplot_out = File.open(outdir+'/section.gplot', 'w')
+  gplot_out.puts gplot_content
+  gplot_out.close
+  `gnuplot '#{outdir}/section.gplot'`
+  data_f_name + '.rb'
 end
+
 
 # Data form: [x1 y1-1 y2-1] [x2 y1-2 y2-2 ...]
 def quick_plot(data)
@@ -1271,7 +1324,16 @@ def gplot_datablock(name, data, options = {})
   output
 end
 
+
+
+# 以下 For sample alignment
 # Gives the rotation matrix needed to rotate origin to a resulting point set, when acted on that point set
+
+# Quick 'n dirty func. to convert plot coord. to piezo coord.
+def coord_conv(pl_scan_orig, orig_dim, map_dimension, coord)
+  return [coord[0].to_f/map_dimension[0]*orig_dim[0]+pl_scan_orig[0], coord[1].to_f/map_dimension[1]*orig_dim[1]+pl_scan_orig[1]]
+end
+
 def rotator_solve(origin)
   (origin.transpose * origin).invert * origin.transpose
 end
