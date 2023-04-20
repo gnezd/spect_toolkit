@@ -10,7 +10,7 @@ require 'json'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :loaded, :spe, :s_scan, :bin_to_spect
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :loaded, :spe, :s_scan, :bin_to_spect, :aspect_ratio
   def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
@@ -30,6 +30,8 @@ class Scan < Array
       @s_scan = scan_param['S-shape scan']
       @bin_to_spect = scan_param['Binning']
     end
+
+    @aspect_ratio = @p_height ? @p_height/@p_width : 1
 
     @loaded = false
     @spectral_width = 0
@@ -310,11 +312,10 @@ GP_TERM
 
     gplot_style = options&.[](:plot_style)
 
-    aspect_ratio = @p_height ? @p_height/@p_width : -1
 gplot_content =<<GPLOT_HEAD
 # Created by microPL_scan version #{VERSION}
 #{gplot_terminal}
-set size ratio #{aspect_ratio}
+set size ratio #{(@aspect_ratio == 1) ? -1 : @aspect_ratio}
 set border 0
 unset key
 set xrange[-0.5:#{@width-0.5}]

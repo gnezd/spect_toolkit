@@ -47,11 +47,7 @@ class MappingPlotter
       selection_on_map(e, :mousedown)
     }
     @map_canvas.bind("Motion") do |e| 
-      if @map_clicked
-        selection_on_map(e, :dragging)
-      elsif @sideways_selection
-        selection_on_map(e, :sideways)
-      end
+      selection_on_map(e, :motion)
     end
     @map_canvas.bind("ButtonRelease-1") {|e|
       selection_on_map(e, :mouseup)
@@ -314,6 +310,7 @@ class MappingPlotter
   
   def section_plot
     data_f_name = "./plotter_scratch/#{@scan.name}-section-#{@selection_on_scan.join('-')}"
+    # 以上plotter specific
     data_fout = File.open(data_f_name+'.tsv', 'w')
     @spects.each do |spect|
       data_fout.puts (spect.map{|pt| pt[1]}).join ' '
@@ -410,15 +407,26 @@ EOG
           @map_annot.push(line)
         end
       end
-    when :dragging
+    when :motion
+      # Update selection in the go
+      # Select cross section binning wing 
       if $map_select_mode == 'binned section' && @sideways_selection
-      else
+        @vec = section_vector(@map_selections.last, [event.x, event.y])
+        @map_annot.last.coords(@map_selections.last[2] + @vec[0], @map_selections.last[3] + @vec[1],
+                              @map_selections.last[0] + @vec[0], @map_selections.last[1] + @vec[1], 
+                              @map_selections.last[0] - @vec[0], @map_selections.last[1] - @vec[1],
+                              @map_selections.last[2] - @vec[0], @map_selections.last[3] - @vec[1])
+      # Update other dragging
+      elsif @map_clicked
         @map_annot.last.coords(@map_selections.last[0], @map_selections.last[1], event.x,event.y)
       end
     when :mouseup
       @map_clicked = false
       if $map_select_mode == 'binned section'
         if @sideways_selection
+          coords = (0..3).map {|i| @map.canvas_coord_to_plot_coord(@map_annot.last.coords[2*i..2*i+1])}
+          axis = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
+          binned_section_plot(axis, coords)
           @sideways_selection = false
         else
           @map_selections.last[2..3]=[event.x, event.y]
@@ -428,13 +436,6 @@ EOG
         @map_selections.last[2..3]=[event.x, event.y]
         accumulate_spect
       end
-    when :sideways
-      # Update polygon
-      @vec = section_vector(@map_selections.last, [event.x, event.y])
-      @map_annot.last.coords(@map_selections.last[2] + @vec[0], @map_selections.last[3] + @vec[1],
-                            @map_selections.last[0] + @vec[0], @map_selections.last[1] + @vec[1], 
-                            @map_selections.last[0] - @vec[0], @map_selections.last[1] - @vec[1],
-                            @map_selections.last[2] - @vec[0], @map_selections.last[3] - @vec[1])
     end
   end
 
@@ -456,18 +457,22 @@ EOG
     vec = section_vector(axis, coord)
     pt_aligned = [coord[0] + vec[0], coord[1] + vec[1]]
     c = [pt_aligned[0] - axis[0], pt_aligned[1] - axis[1]]
-    t = (c[0].to_f/(axis[2]-axis[0]) + c[1].to_f/(axis[3]-axis[1]))/2
+    return c[1].to_f/(axis[3]-axis[1]) if axis[2] - axis[0] == 0
+    return c[0].to_f/(axis[2]-axis[0]) if axis[3] - axis[1] == 0
+    return (c[0].to_f/(axis[2]-axis[0]) + c[1].to_f/(axis[3]-axis[1]))/2
   end
 
   # Compute binned section and plot
   def binned_section_plot(axis, box)
-    @vec_on_scan = [(box[2][0]-box[1][0])/2, (box[2][1]-box[1][1])/2]
+    @vec_on_scan = [(box[2][0]-box[1][0])/2, (box[2][1]-box[1][1])/2] # Normal vec on scan coord
     puts "Axis: #{axis.join('-')}"
     puts "sideway spanned with vector #{@vec_on_scan}"
     puts "to form box #{box}"
     xrange = ((0..3).map{|i| box[i][0].to_i}).minmax
     yrange = ((0..3).map{|i| box[i][1].to_i}).minmax
-    puts "collecting points from #{xrange} x #{yrange}"
+    puts "Collecting points from #{xrange} x #{yrange}"
+
+    # Filtering points
     ptlist = []
     (xrange[0] .. xrange[1]).each do |x|
       (yrange[0] .. yrange[1]).each do |y|
@@ -476,49 +481,50 @@ EOG
         #puts "-----"
         #puts "pt #{x} - #{y} under consideration"
         #puts "t: #{t} vec: #{this_vec}"
-        ptlist.push [t, x, y] if t <= 1 && t > 0 && this_vec[0]**2 < @vec_on_scan[0]**2
+        #puts "-----"
+        ptlist.push [t, x, y] if t <= 1 && t > 0 && this_vec[0]**2 + this_vec[1]**2 < @vec_on_scan[0]**2 + @vec_on_scan[1]**2 # 為了直橫線不得取巧
       end
     end
     ptlist.sort_by! {|pt| pt[0]}
-
     puts "collected #{ptlist.size} points with t ranging from #{ptlist.map{|pt| pt[0]}.minmax}"
-    binwidth = ((@vec_on_scan[0]**2 + @vec_on_scan[1]**2)**0.5)*2
-    puts "estimated width is #{binwidth}"
 
-    binned = []
-    while ptlist.size > 0
-      binned.push ptlist.shift(binwidth.to_i)
-    end
-    
-    t_list = binned.map{|bin| (bin.map{|pt| pt[0]}).sum/bin.size}
-    puts "binned t: #{t_list}"
-
-    uneven_spects = []
-    binned.each do |bin|
-      spect = (bin.map{|pt| @scan[pt[1]][pt[2]][@z][@roi]}).reduce(:+) / bin.size
-      uneven_spects.push spect
-    end
-    
     # Perform t-resampling
     # Approach: we wish to preserve the spacing regardless of section angle orientation
-    t_spacing = (t_list[-1].to_f - t_list[0]) / ((box[1][0] - box[0][0])**2 + (box[1][1]-box[0][1])**2)**0.5
-    @spects = []
+    t_span = (ptlist[-1][0].to_f - ptlist[0][0])
+    t_spacing =  t_span / ((box[1][0] - box[0][0])**2 + (box[1][1]-box[0][1])**2/(@scan.aspect_ratio)**2)**0.5
 
-    # The real resampling
+    #binwidth = ((@vec_on_scan[0]**2 + @vec_on_scan[1]**2)**0.5)*2
+    #puts "estimated width is #{binwidth}"
+
+    # Construct binned point list [[pt1, pt2, pt3], [pt4, pt5, pt6, pt7 ... etc]]
+    bins = Array.new((t_span/t_spacing).ceil+1) {[]}
     t = 0.0
-    binned.each_with_index do |line, i|
-      next if i == 0
-      break if i+1 == bin.size
-      while t < line[0]
-        next if t < bin[i-1][0]
-        # Interpolate
-        puts "Doing t = #{t}"
-        spect = (uneven_spects[i-1] * (t-bin[i-1][0]) + uneven_spects[i] * (line[0]-t)) / (line[0]-bin[i-1][0])
-        @spects.push spect
-        t += t_spacing
-        break if t>1
+    ptlist.each do |pt|
+      begin
+      bins[pt[0]/t_spacing].push pt
+      rescue
+        puts bins[pt[0]/t_spacing]
+        puts "Broken binning at #{pt} with t_spacing being #{t_spacing}"
       end
     end
+
+    bins = bins.filter {|bin| !bin.empty?}
+
+    
+    t_list = bins.map{|bin| (bin.map{|pt| pt[0]}).sum/bin.size}
+    puts "binned t: #{t_list}"
+
+    binned = []
+    bins.each do |bin|
+      spect = (bin.map{|pt| @scan[pt[1]][pt[2]][@z][@roi]}).reduce(:+) / bin.size
+      binned.push spect
+    end
+    
+    @spects = []
+
+    # Evenly spaced t resampling
+    # Not yet
+    @spects = binned
 
 
     @selection_on_scan = box.map{|pt| pt.map{|value| value.to_i}}
