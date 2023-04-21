@@ -309,7 +309,7 @@ class MappingPlotter
   end
 
   def update_section_plot
-    @spect_plot = RbTkCanvas.new(section_plot(@spects, {out_dir: "./plotter_scratch/#{@scan.name}-section", plot_term: 'tkcanvas-rb', plot_style: spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height}))
+    @spect_plot = RbTkCanvas.new(plot_section(@spects, {out_dir: "./plotter_scratch/#{@scan.name}-section", plot_term: 'tkcanvas-rb', plot_style: @spect_style, plot_width: @spect_canvas.width, plot_height: @spect_canvas.height}))
     @spect_plot.plot_to @spect_canvas
   end
   
@@ -363,11 +363,10 @@ class MappingPlotter
       update_section_plot
     when 'binned section'
       # Return spects but not set of points for now
-      @spects = @scan.binned_section(@section_axis, @section_box)
-
-
-
-      update_spectra_plot
+      axis_on_map = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
+      span = section_vector(axis_on_map, @map.canvas_coord_to_plot_coord(@map_annot.last.coords[0..1]))
+      @spects = @scan.binned_section(axis_on_map, span, {roi: @roi, z: @z})
+      update_section_plot
     else
     end
 
@@ -414,10 +413,8 @@ class MappingPlotter
       @map_clicked = false
       if $map_select_mode == 'binned section'
         if @sideways_selection
-          @section_box = (0..3).map {|i| @map.canvas_coord_to_plot_coord(@map_annot.last.coords[2*i..2*i+1])}
-          @section_axis = @map.canvas_coord_to_plot_coord(@map_selections.last[0..1]) + @map.canvas_coord_to_plot_coord(@map_selections.last[2..3])
+          #@section_box = (0..3).map {|i| @map.canvas_coord_to_plot_coord(@map_annot.last.coords[2*i..2*i+1])}
           @sideways_selection = false
-          #binned_section_plot(axis, coords)
           accumulate_spect
         else
           @map_selections.last[2..3]=[event.x, event.y]
@@ -430,28 +427,6 @@ class MappingPlotter
     end
   end
 
-  # Compute section vector
-  def section_vector(axis, coord)
-    # Catch horizontal
-    return [0, axis[1]-coord[1]] if axis[1] == axis[3]
-    return [axis[0] - coord[0], 0] if axis[0] == axis[2]
-    
-    # Compute x and y intersects
-    ix = axis[2] - (axis[3].to_f - coord[1])*(axis[2] - axis[0]) / (axis[3] - axis[1]) - coord[0]
-    iy = axis[3] - (axis[2].to_f - coord[0])*(axis[3] - axis[1]) / (axis[2] - axis[0]) - coord[1]
-    return [0,0] if ix==0 || iy==0
-    return [ix*(iy**2)/(ix**2+iy**2), iy*(ix**2) / (ix**2 + iy**2)]
-  end
-
-  # Project coord onto axis and get the parameter t
-  def get_t(axis, coord)
-    vec = section_vector(axis, coord)
-    pt_aligned = [coord[0] + vec[0], coord[1] + vec[1]]
-    c = [pt_aligned[0] - axis[0], pt_aligned[1] - axis[1]]
-    return c[1].to_f/(axis[3]-axis[1]) if axis[2] - axis[0] == 0
-    return c[0].to_f/(axis[2]-axis[0]) if axis[3] - axis[1] == 0
-    return (c[0].to_f/(axis[2]-axis[0]) + c[1].to_f/(axis[3]-axis[1]))/2
-  end
 
   # Compute binned section and plot
   def binned_section_plot(axis, box)

@@ -393,9 +393,57 @@ GPLOT_HEAD
     list
   end
 
-  def binned_section(axis, box)
+  # Return binned spectra across axis with binning span
+  def binned_section(axis, span, options = {})
+    z = options[:z] ? options[:z] : 0
+    roi = options[:roi] ? options[:roi] : 0
+    box = [
+      [axis[2]+span[0], axis[3]+span[1]],
+      [axis[0]+span[0], axis[1]+span[1]],
+      [axis[0]-span[0], axis[1]-span[1]],
+      [axis[2]-span[0], axis[3]-span[1]]
+    ]
+    xrange = box.map{|pt| pt[0].to_i}.minmax
+    yrange = box.map{|pt| pt[1].to_i}.minmax
+
     list = []
-    list
+    (xrange[0] .. xrange[1]).each do |x|
+      (yrange[0] .. yrange[1]).each do |y|
+        t = get_t(axis, [x,y])
+        this_vec = section_vector(axis, [x,y])
+        list.push [x, y, t] if t <= 1 && t > 0 && this_vec[0]**2 + this_vec[1]**2 < span[0]**2 + span[1]**2 # 為了直橫線不得取巧
+      end
+    end
+    list.sort_by! {|pt| pt[2]}
+    
+    # Perform t-resampling
+    # Approach: we wish to preserve the spacing regardless of section angle orientation
+    t_span = (list[-1][2].to_f - list[0][2])
+    t_spacing =  t_span / ((axis[2]-axis[0])**2 + (axis[3]-axis[1])**2/(@aspect_ratio)**2)**0.5 # This will make trouble when h > w!!
+    
+    # Construct binned point list [[pt1, pt2, pt3], [pt4, pt5, pt6, pt7 ... etc]]
+    bins = Array.new((t_span/t_spacing).ceil+1) {[]}
+    t = 0.0
+    list.each do |pt|
+      begin
+      bins[pt[2]/t_spacing].push pt
+      rescue
+        puts bins[pt[2]/t_spacing]
+        puts "Broken binning at #{pt} with t_spacing being #{t_spacing}"
+      end
+    end
+    bins = bins.filter {|bin| !bin.empty?}
+
+    # Actual binning
+    binned = []
+    bins.each do |bin|
+      #bin.each {|pt| puts "pt[0] #{pt[0]} pt[1] #{pt[1]}"}
+      spect = (bin.map{|pt| self[pt[0]][pt[1]][z][roi]}).reduce(:+) / bin.size
+      spect.units = @spectrum_units
+      binned.push spect
+    end
+
+    binned
   end
 
 end
@@ -1194,7 +1242,7 @@ GPLOT_HEADER
   return plot_output
 end
 
-def section_plot(spectra, options = {})
+def plot_section(spectra, options = {})
 
   debug = options[:debug]
   raise "Not an array of spectra input." unless (spectra.is_a? Array) && (spectra.all? Spectrum)
@@ -1217,11 +1265,47 @@ def section_plot(spectra, options = {})
   Dir.mkdir outdir unless Dir.exist? outdir
 
   data_fout = File.open(outdir+'/section-matrix.tsv', 'w')
-  @spects.each do |spect|
+  spectra.each do |spect|
     data_fout.puts (spect.map{|pt| pt[1]}).join ' '
   end
   data_fout.close
 
+  # Construct xtics
+  case x_units[0]
+  when 'nm'
+    tics = []
+    spectra[0].each_with_index do |pt, x|
+      if x == 0 || x == spectra[0].size-1 # 
+      elsif (pt[0]/100).to_i != (spectra[0][x+1][0]/100).to_i # Every 100 nm
+        tics.push [((spectra[0][x+1][0]/100).to_i*100).to_s, x]
+      end
+    end
+    set_xticks = "set xtics (#{tics.map {|tic| "\"#{tic[0]}\" #{tic[1]}"}.join(', ')})"
+    set_xticks += "\nset xlabel 'wavelength (nm)'"
+  when 'wavenumber'
+    tics = []
+    spectra[0].each_with_index do |pt, x|
+      if x == 0 || x == spectra[0].size-1 # 
+      elsif (pt[0]/1000).to_i != (spectra[0][x+1][0]/1000).to_i # Every 100 nm
+        tics.push [((spectra[0][x+1][0]/1000).to_i*1000).to_s, x]
+      end
+    end
+    set_xticks = "set xtics (#{tics.map {|tic| "\"#{tic[0]}\" #{tic[1]}"}.join(', ')})"
+    set_xticks += "\nset xlabel 'wavenumber (cm^{-1})'"
+  when 'eV'
+    tics = []
+    spectra[0].each_with_index do |pt, x|
+      if x == 0 || x == spectra[0].size-1 # 
+      elsif (pt[0]/0.5).to_i != (spectra[0][x+1][0]/0.5).to_i # Every 100 nm
+        tics.push [((spectra[0][x+1][0]/0.5).to_i*0.5).to_s, x]
+      end
+    end
+    set_xticks = "set xtics (#{tics.map {|tic| "\"#{tic[0]}\" #{tic[1]}"}.join(', ')})"
+    set_xticks += "\nset xlabel 'eV'"
+  else
+    set_xticks = ''
+  end
+  
   # Switching canvas type
   case options&.[](:plot_term)
   when nil, 'svg' # Means not indicated or svg
@@ -1232,17 +1316,21 @@ def section_plot(spectra, options = {})
     plot_output = "#{outdir}/section.rb"
     set_term = "set terminal tkcanvas ruby size #{width},#{height}"
   end
-    gplot_content = <<EOGP
-#{set term}
+
+  # Assemble gplot instructions
+  gplot_content = <<EOGP
+#{set_term}
 set output '#{plot_output}'
 #{@section_style}
+#{set_xticks}
 plot '#{outdir}/section-matrix.tsv' matrix w image pixel
 EOGP
+
   gplot_out = File.open(outdir+'/section.gplot', 'w')
   gplot_out.puts gplot_content
   gplot_out.close
   `gnuplot '#{outdir}/section.gplot'`
-  data_f_name + '.rb'
+  plot_output
 end
 
 
@@ -1324,7 +1412,29 @@ def gplot_datablock(name, data, options = {})
   output
 end
 
+# Some geometry stuffs
+# Compute section vector
+def section_vector(axis, coord)
+  # Catch horizontal
+  return [0, axis[1]-coord[1]] if axis[1] == axis[3]
+  return [axis[0] - coord[0], 0] if axis[0] == axis[2]
+  
+  # Compute x and y intersects
+  ix = axis[2] - (axis[3].to_f - coord[1])*(axis[2] - axis[0]) / (axis[3] - axis[1]) - coord[0]
+  iy = axis[3] - (axis[2].to_f - coord[0])*(axis[3] - axis[1]) / (axis[2] - axis[0]) - coord[1]
+  return [0,0] if ix==0 || iy==0
+  return [ix*(iy**2)/(ix**2+iy**2), iy*(ix**2) / (ix**2 + iy**2)]
+end
 
+# Project coord onto axis and get the parameter t
+def get_t(axis, coord)
+  vec = section_vector(axis, coord)
+  pt_aligned = [coord[0] + vec[0], coord[1] + vec[1]]
+  c = [pt_aligned[0] - axis[0], pt_aligned[1] - axis[1]]
+  return c[1].to_f/(axis[3]-axis[1]) if axis[2] - axis[0] == 0
+  return c[0].to_f/(axis[2]-axis[0]) if axis[3] - axis[1] == 0
+  return (c[0].to_f/(axis[2]-axis[0]) + c[1].to_f/(axis[3]-axis[1]))/2
+end
 
 # 以下 For sample alignment
 # Gives the rotation matrix needed to rotate origin to a resulting point set, when acted on that point set
