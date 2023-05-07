@@ -474,6 +474,7 @@ class MappingPlotter
     # Generate z selection radiobuttons in @z_selector here
     @z_selector.configure('values', (0..@scan.depth-1).map {|z| z.to_s})
     
+    # Raman?
     @spect_style += "set xrange [#{@scan[0][0][0][0][0][0]}:#{@scan[0][0][0][0][-1][0]}]\n" if $spectral_unit == 'wavenumber'
     remap
   end

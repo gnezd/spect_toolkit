@@ -1171,6 +1171,7 @@ end
 # Sparse methods below
 
 # Plot the spectra in an arra
+# Options: debug(true/false), out_dir(str), plotline_inject(str), linestyle(array of str), plot_term(str), plot_width(int), plot_height(int), plot_style(str), raman_line(str)
 def plot_spectra(spectra, options = {})
   debug = options[:debug]
   raise "Not an array of spectra input." unless (spectra.is_a? Array) && (spectra.all? Spectrum)
@@ -1181,15 +1182,16 @@ def plot_spectra(spectra, options = {})
     raise "Some spectra have different units: #{x_units}" 
   end
 
+  # Prepare output path
   if options[:out_dir]
     outdir = options[:out_dir]
   else
     outdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
-
   puts "Ploting to #{outdir}" if debug
   Dir.mkdir outdir unless Dir.exist? outdir
 
+  # Prepare plots
   plots = []
   plots += options[:plotline_inject] if options[:plotline_inject]
   spectra.each_with_index do |spectrum, i|
@@ -1199,6 +1201,10 @@ def plot_spectra(spectra, options = {})
     # Ugly fix
     # Should actually be filtering if enhanced is used
     # reversing raman plot here aswell
+    
+    # Take care of Raman plots here
+
+    # tkcanvas doesn't support enhanced text just yet
     if options[:plot_term] == 'tkcanvas-rb'
       plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name}'"
     else
@@ -1207,6 +1213,7 @@ def plot_spectra(spectra, options = {})
   end
   plotline = "plot " + plots.join(", \\\n")
   
+  # Terminal dependent preparations
   case options&.[](:plot_term)
   when nil, 'svg' # Means not indicated or svg
     plot_output = "#{outdir}/spect-plot.svg"
@@ -1228,6 +1235,8 @@ set output '#{plot_output}'
 GP_TERM
   end
   
+  # Writing gnuplot instructions
+  # Cleaan these up!
   gplot = File.open outdir+ "/gplot", 'w'
   plot_headder = <<GPLOT_HEADER
 #{gplot_terminal}
@@ -1238,6 +1247,9 @@ GPLOT_HEADER
   gplot.puts options[:plot_style]
   gplot.puts plotline
   gplot.close
+
+  # Execute and return plot path
+  # Catch plotting failure? Err if plot_output not generated?
   `gnuplot '#{outdir}/gplot'`
   return plot_output
 end
