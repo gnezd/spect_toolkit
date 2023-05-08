@@ -1203,13 +1203,38 @@ def plot_spectra(spectra, options = {})
     # reversing raman plot here aswell
     
     # Take care of Raman plots here
+    # Should this be done only once instead of to each spectrum?
+    coord_ref = '($1):($2)'
+    if options[:raman_line]
+      raman_line_match = options[:raman_line].to_s.match(/^(\d+\.?\d*)\s?(nm|cm-1|wavenumber|eV)?$/)
+      raman_line = raman_line_match[1].to_f
+      raman_line_match[2] = spectrum.units[0] unless raman_line_match[2]
+      # Unit conversion if necessary
+      if raman_line_match[2] == 'nm'
+        # Do nothing
+      elsif raman_line_match[2] == 'wavenumber' || 'cm-1'
+        raman_line = 0.01/raman_line
+      elsif raman_line_match[2] == 'eV'
+        raman_line = 1239.84197 / raman_line
+      end
 
+      case spectrum.units[0]
+      when 'nm'
+      when 'eV'
+      when 'wavenumber', 'cm-1'
+      end
+
+    end
+    
+    
     # tkcanvas doesn't support enhanced text just yet
     if options[:plot_term] == 'tkcanvas-rb'
-      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name}'"
+      title = spectrum.name
+      #plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name}'"
     else
-      plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name.gsub('_', '\_')}'"
+      title = spectrum.name.gsub('_', '\_')
     end
+      plots.push "'#{outdir}/#{spectrum.name}.tsv' u #{coord_ref} with lines #{linestyle} t '#{title}'"
   end
   plotline = "plot " + plots.join(", \\\n")
   
