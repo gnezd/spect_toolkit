@@ -1321,7 +1321,7 @@ def plot_section(spectra, options = {})
   gplot_content = <<EOGP
 #{set_term}
 set output '#{plot_output}'
-#{@section_style}
+#{options[:plot_style]}
 #{set_xticks}
 plot '#{outdir}/section-matrix.tsv' matrix w image pixel
 EOGP
