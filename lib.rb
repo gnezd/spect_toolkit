@@ -31,7 +31,9 @@ class Scan < Array
       @bin_to_spect = scan_param['Binning']
     end
 
-    @aspect_ratio = @p_height ? @p_height/@p_width : 1
+    # This will mean the aspect ratio of the mapping image, and not that of the actual scan
+    # the image will contain 1 more pixel size both on x and y
+    @aspect_ratio = @p_height ? (@p_height + @p_height/@height)/(@p_width+@p_width/@width) : 1
 
     @loaded = false
     @spectral_width = 0
