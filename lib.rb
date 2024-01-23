@@ -10,7 +10,7 @@ require 'json'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :loaded, :spe, :s_scan, :bin_to_spect, :aspect_ratio
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :p_width, :p_height, :p_depth, :loaded, :spe, :s_scan, :bin_to_spect, :aspect_ratio
   def initialize (path, name, dim, options = nil)
     @path = path
     @name = name
@@ -228,7 +228,12 @@ class Scan < Array
         x = i % @width
         y = ((i - x) / @width) % @height
         z = i / (@width * height)
+    begin
         @map_data[z][y][x] = mapping_function.yield(self[x][y][z], [x, y, z])
+    rescue
+      puts "Error at #{x}-#{y}-#{z}"
+      @map_data[z][y][x] = 0
+    end
         i += 1
       end
   
@@ -561,7 +566,7 @@ class Spectrum < Array
     end
 
     if loosen
-      result = reslt.peak_loosen(loosen)
+      result = result.peak_loosen(loosen)
     end
     result
   end
@@ -576,7 +581,7 @@ class Spectrum < Array
     end
 
     if loosen
-      result = reslt.peak_loosen(loosen)
+      result = result.peak_loosen(loosen)
     end
     result
   end
@@ -860,12 +865,17 @@ class Alignment
     @name = name
     raise "Not valid path: #{alignment_dir}" unless Dir.exist? alignment_dir
     control_point_files = Dir.glob alignment_dir + "/*.bmp"
+    control_point_files.sort_by! {|fname| File.basename(fname).split('_')[0].to_f}
     control_point_files.each do |fn|
+      # Old alignment name convention
       if match = File.basename(fn).match(/^([^\-]+)\-(\d+\.\d\d\d)-(\d+\.\d\d\d)-(\d+\.\d\d\d)/)
         #coords_arr.push [match[2].to_f, match[3].to_f, match[4].to_f]
         # 2-dim for now for 3-dim requires more testing. rotator_solve might yet be incompatible
         coords_arr.push [match[2].to_f, match[3].to_f]
         @control_pts.push [match[1], fn]
+      elsif match = File.basename(fn, '.bmp').match(/_(\-?\d+)_(\-?\d+)_?(\-?\d\.?\d*)?/)
+        coords_arr.push [match[1].to_f, match[2].to_f]
+        @control_pts.push [File.basename(fn, '.bmp'), fn]
       end
     end
     @coords = GSL::Matrix.alloc(coords_arr.flatten, coords_arr.size, 2)
@@ -1170,7 +1180,7 @@ end
   
 # Sparse methods below
 
-# Plot the spectra in an arra
+# Plot the spectra in an array
 # Options: debug(true/false), out_dir(str), plotline_inject(str), linestyle(array of str), plot_term(str), plot_width(int), plot_height(int), plot_style(str), raman_line(str)
 def plot_spectra(spectra, options = {})
   debug = options[:debug]
@@ -1206,7 +1216,7 @@ def plot_spectra(spectra, options = {})
     # Should this be done only once instead of to each spectrum?
     coord_ref = '($1):($2)'
     if options[:raman_line]
-      raman_line_match = options[:raman_line].to_s.match(/^(\d+\.?\d*)\s?(nm|cm-1|wavenumber|eV)?$/)
+      raman_line_match = options[:raman_line].to_s.match(/^(\d+\.? \d*)\s?(nm|cm-1|wavenumber|eV)?$/)
       raman_line = raman_line_match[1].to_f
       raman_line_match[2] = spectrum.units[0] unless raman_line_match[2]
       # Unit conversion if necessary
