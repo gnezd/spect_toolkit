@@ -1024,7 +1024,7 @@ class Spe < Array
 
   # Universal accesor for all regardless of spectrum or image containing Spes
   def at(frame, roin)
-  raise "Roi and frame # must be specified" if (frame == nil) || (roin == nil)
+    raise "Roi and frame # must be specified" if (frame == nil) || (roin == nil)
 
     # Unbinned ROI, output array
     if @rois[roin][:data_height] > 1 && !(@bin_to_spect)
@@ -1175,7 +1175,7 @@ class SIF < Array
 
     match = @raw[ptr..-1].match /^(\S+)\s\n\s(\S+)\s(\S+)\s(\S+)\n/
     @detector_name = match[1]
-    @detector_dimension = match[2..3]
+    @detector_dimension = match[2..3].map{|i| i.to_i}
     orig_filename_length = match[4].to_i
     ptr += match[0].size
 
@@ -1291,6 +1291,9 @@ class SIF < Array
     @frames, roi_n, @total_l, @image_l = match[1..4].map{|i| i.to_i} # Guess that roi_n == no_subimages
     ptr += match[0].size
 
+    # No calibration, px number
+    @wv = (1..@detector_dimension[0]).to_a
+
     # Construct @rois
     @rois = Array.new(roi_n)
     (0..roi_n-1).each do |roii|
@@ -1299,10 +1302,10 @@ class SIF < Array
       ptr += match[0].size
       @rois[roii] = {
         id:  roii,
-        x:  x0,
-        y:  y0,
-        width: x1-x0,
-        height: y1-y0,
+        x:  x0-1,
+        y:  y0-1,
+        width: x1-x0+1,
+        height: y1-y0+1,
         xbinning: xbin,
         ybinning: ybin,
         data_width: (x1-x0+1) / xbin,
@@ -1330,8 +1333,8 @@ class SIF < Array
       end
     end
     @data_offset = ptr
-    frame_datasize = @rois.map{|roi| roi[:data_width] * roi[:data_height]}.sum
-    ptr += @frames * frame_datasize * 4
+    @framesize = @rois.map{|roi| roi[:data_width] * roi[:data_height]}.sum
+    ptr += @frames * @framesize * 4
     
     # Four lines of 0 lead to xml
     4.times do
@@ -1345,7 +1348,66 @@ class SIF < Array
   end
 
   def at(frame, roin)
-    
+    raise "Roi and frame # must be specified" if (frame == nil) || (roin == nil)
+
+    # Unbinned ROI, output array
+    if @rois[roin][:data_height] > 1 && !(@bin_to_spect)
+      result = Array.new(@rois[roin][:data_height]) {Array.new(@rois[roin][:data_width]) {0}}
+      yi = 0
+      while yi < @rois[roin][:data_height]
+        result[yi] = @raw[@data_offset + (frame * @framesize + yi * @rois[roin][:data_width])*4 .. @data_offset + (frame * @framesize + (yi+1) * @rois[roin][:data_width])*4+1].unpack('F*')
+        yi += 1
+      end
+      return result.transpose
+
+    # Output Spectrum
+    else
+      result = Spectrum.new()
+      xi = 0
+      roishift = 0
+
+      roii = 0
+      while roii < roin
+        roishift += @rois[roii][:data_width] * @rois[roii][:data_height]
+        roii += 1
+      end
+
+      # Binning needed
+      if @bin_to_spect
+        if @bin_to_spect.is_a? Array
+          bin_range = @bin_to_spect 
+        else
+          bin_range = [0, @rois[roin][:data_height]]
+        end
+
+        while xi < @rois[roin][:data_width]
+          result[xi] = [@wv[xi + roishift], 0]
+          yi = bin_range[0]
+          while yi < bin_range[1]
+            unpacked = @raw[@data_offset+(frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi)*4 .. @data_offset + (frame * @framesize + roishift + yi*@rois[roin][:data_width] + xi)*4 +3].unpack1('F')
+            raise "frame #{frame} #{xi} #{yi}" unless unpacked
+            result[xi][1] += unpacked
+            yi += 1
+          end
+          xi += 1
+        end
+      # No binning
+      else
+        while xi < @rois[roin][:data_width]
+          result[xi] = [@wv[xi + roishift], 
+          @raw[@data_offset + (frame * @framesize + roishift + xi)*4 .. @data_offset + (frame * @framesize + roishift + xi)*4 +3].unpack1('F')]
+          xi += 1
+        end
+      end
+      result.name = "#{@name}-#{frame}-roi#{roin}"
+
+      result.update_info
+      result.units = @spectrum_units
+      return result
+    end
+      
+
+
   end
 
   def inspect
