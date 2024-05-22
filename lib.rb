@@ -1099,11 +1099,262 @@ class Spe < Array
 end
 
 # Andor .sif format
-class SIF
+class SIF < Array
+  attr_accessor :path, :name, :sif_ver, :frames, :frame_width, :frame_height,:framesize, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :cycle_time, :accumulated_cycle_time, :accumulated_cycles, :temperature, :rois, :bin_to_spect
+  
   def initialize(path, name, options = {})
+    debug = options[:debug]
+    @path = path
+    @name = name
+    raise "No such file #{@path}" unless File.exist? path
+    @bin_to_spect = options[:bin_to_spect]
+    @raw = File.open(@path, 'rb') {|f| f.read.freeze}
+
+    puts "Finished reading spe at #{Time.now.strftime('%H:%M:%S.%3N')}" if debug
+    puts "Raw data has a lenght of: #{@raw.size}" if debug
+
+    ptr = 0
+    raise "Magic string not matching, #{@path} is no SIF file" unless @raw[ptr..ptr+35] == "Andor Technology Multi-Channel File\n"
+    ptr += 36
+
+    linel = @raw[ptr..-1].index "\n"
+    @ln2 = @raw[ptr..ptr+(linel-1)]
+    ptr += (linel+1)
+    puts @ln2
+
+    delim = @raw[ptr..-1].index(" ")
+    @sif_ver = @raw[ptr..ptr+delim-1].to_i
+    puts "SIF version #{@sif_ver}"
+    ptr += (delim+1)
+
+    raise "Expecting '0 0 1 ' but got '#{@raw[ptr..ptr+5]}'" unless @raw[ptr..ptr+5] == '0 0 1 '
+    ptr += 6
+
+    match = @raw[ptr..-1].match /^(\d+)\s(\S+)\s/ # Lazy delimination w/o checking for float string fmt
+    raise "Problem extracting exposure time and temp" unless match
+    @data_creation = match[1].to_i
+    @temperature = match[2].to_f
+    ptr += match[0].size
+
+    match = @raw[ptr..-1].match /^(\S+)\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s/
+    raise "Expecting zero at #{ptr}" unless match[6] == '0'
+    ptr += match[0].size
+
+    match = @raw[ptr..-1].match /^(\S+)\s(\S+)\s(\S+)\s(\S+)\s/
+    @exposure_time = match[1].to_f
+    @cycle_time = match[2].to_f
+    @accumulated_cycle_time = match[3].to_f
+    @accumulated_cycles = match[4].to_i
+    ptr += match[0].size
+
+    match = @raw[ptr..-1].match /^\0\s(\S+)\s(\S+)\s\S+\s\S+\s/
+    @stack_cycle_time = match[1]
+    @pixel_readout_time = match[2]
+    ptr += match[0].size
+
+    match = @raw[ptr..-1].match /^(\S+)\s\S+\s\S+\s/
+    @dac_gain = match[1]
+    ptr += match[0].size
+
+
+    match = @raw[ptr..-1].match /^(\S+)\s/
+    @gate_width = match[1]
+    ptr += match[0].size
+
+    # 16 more mysterous entries
+    puts "16 mysterious entries" if debug
+    16.times do
+      match = @raw[ptr..-1].match /^(\S+)\s/
+      puts match[1] if debug
+      ptr += match[0].size
+    end
+
+    match = @raw[ptr..-1].match /^(\S+)[^\n]+\n/
+    @grating_blaze = match[1].to_f
+    ptr += match[0].size
+
+    match = @raw[ptr..-1].match /^(\S+)\s\n\s(\S+)\s(\S+)\s(\S+)\n/
+    @detector_name = match[1]
+    @detector_dimension = match[2..3]
+    orig_filename_length = match[4].to_i
+    ptr += match[0].size
+
+    @original_path = @raw[ptr..ptr+orig_filename_length-1]
+    ptr += orig_filename_length
+
+    match = @raw[ptr..-1].match /\s\n65538\s([^\n]+)\n/
+    user_text_l = match[1].to_i
+    ptr += match[0].size
+    @user_text = @raw[ptr..ptr+user_text_l-1]
+    ptr += user_text_l
+    match = @raw[ptr..-1].match /\n/
+    raise "Trouble at #{ptr}" unless match
+    ptr += 1
+    ptr += 13 # 65538 and 8 bits
+
+    match = @raw[ptr..-1].match /^\s(\S+)\s([^\n\s]+)\n/
+    @shutter_times = match[1..2]
+    ptr += match[0].size
+
+    # Skip lines with respect to various SIF version
+    if @sif_ver >= 65548 && @sif_ver <= 65557
+      match = @raw[ptr..-1].match /[^\n]+\n[^\n]+\n/
+      ptr += match[0].size
+    elsif @sif_ver == 65558
+      5.times do
+        match = @raw[ptr..-1].match /[^\n]+\n/
+        ptr += match[0].size
+      end
+    elsif @sif_ver == 65559 || @sif_ver == 65564
+      8.times do
+        match = @raw[ptr..-1].match /[^\n]+\n/
+        ptr += match[0].size
+      end
+    elsif @sif_ver == 65565
+      15.times do
+        match = @raw[ptr..-1].match /[^\n]+\n/
+        ptr += match[0].size
+      end
+    elsif @sif_ver > 65565
+      8.times do
+        match = @raw[ptr..-1].match /[^\n]+\n/
+        ptr += match[0].size
+      end
+      match = @raw[ptr..-1].match /([^\n]+)\n/
+      @spectrograph = match[1] # Check content
+      9.times do
+        match = @raw[ptr..-1].match /[^\n]+\n/
+        ptr += match[0].size
+      end
+    end
+
+    @spectrograph = 'sif version not checked' if !(defined? @spectrograph)
+
+    match = @raw[ptr..-1].match /^(\S+)\s/
+    @sif_calb_ver = match[1].to_i
+    ptr += match[0].size
+    if @sif_calb_ver == 65540
+      match = @raw[ptr..-1].match /[^\n+]\n/
+      @calb_line = match[1]
+      ptr += match[0].size
+    end
+
+    if @spectrograph.match /Mechelle/
+      raise "We do not use Mechelle spectrometers, dropping support"
+    else
+      match = @raw[ptr..-1].match /([^\n]+)\n/
+      @calibration = match[1]
+      ptr += match[0].size
+    end
+
+    2.times do
+      match = @raw[ptr..-1].match /[^\n]+\n/
+      ptr += match[0].size
+      puts match[0]
+    end
+
+    match = @raw[ptr..-1].match /([^\n]+)\n/
+    @raman = match[1]
+    ptr += match[0].size
+    
+    4.times do
+      match = @raw[ptr..-1].match /[^\n]+\n/
+      ptr += match[0].size
+    end
+    
+    match = @raw[ptr..-1].match /([^\n]+)\n/
+    str_l = match[1].to_i
+    ptr += match[0].size
+    @frame_axis = @raw[ptr..ptr+str_l-1]
+    ptr += str_l
+
+    match = @raw[ptr..-1].match /([^\n]+)\n/
+    str_l = match[1].to_i
+    ptr += match[0].size
+    @data_type = @raw[ptr..ptr+str_l-1]
+    ptr += str_l
+
+    match = @raw[ptr..-1].match /([^\n]+)\n/
+    str_l = match[1].to_i
+    ptr += match[0].size
+    @image_axis = @raw[ptr..ptr+str_l-1]
+    ptr += str_l
+
+    match = @raw[ptr..-1].match /\S+\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s/
+    
+    # Note that pixels start with the 1st in Andor notation
+    @xrange = [match[1], match[3]].map{|i| i.to_i}
+    @yrange = [match[4], match[2]].map{|i| i.to_i}
+    ptr += match[0].size
+
+    match = @raw[ptr..-1].match /(\S+)\s(\S+)\s(\S+)\s(\S+)\s/ # \s matches \n !!!
+    @frames, roi_n, @total_l, @image_l = match[1..4].map{|i| i.to_i} # Guess that roi_n == no_subimages
+    ptr += match[0].size
+
+    # Construct @rois
+    @rois = Array.new(roi_n)
+    (0..roi_n-1).each do |roii|
+      match = @raw[ptr..-1].match /\S+\s(\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (\S+)\n/
+      x0, y1, x1, y0, ybin, xbin = match[1..6].map {|i| i.to_i}
+      ptr += match[0].size
+      @rois[roii] = {
+        id:  roii,
+        x:  x0,
+        y:  y0,
+        width: x1-x0,
+        height: y1-y0,
+        xbinning: xbin,
+        ybinning: ybin,
+        data_width: (x1-x0+1) / xbin,
+        data_height: (y1-y0+1) / ybin
+      }
+    end
+    # Trim spaces
+    #match = @raw[ptr..-1].match /\s+/
+    #ptr += match[0].size
+    
+    @timestamps = []
+    (0..@frames-1).each do |frame|
+      match = @raw[ptr..-1].match /^\s+(\S+)\n/
+      ptr += match[0].size
+      @timestamps[frame] = match[1].to_f
+    end
+
+    ptr +=2 if @raw[ptr..ptr+1] == "0\n"
+    if @sif_ver == 65567 && @raw[ptr..ptr+1] == "1\n"
+      # A weird array may occur
+      puts "Arraycorrection"
+      @frames.times do
+        match = @raw[ptr..-1].match /\d+\n/
+        ptr += match[0].size
+      end
+    end
+    @data_offset = ptr
+    frame_datasize = @rois.map{|roi| roi[:data_width] * roi[:data_height]}.sum
+    ptr += @frames * frame_datasize * 4
+    
+    # Four lines of 0 lead to xml
+    4.times do
+      match = @raw[ptr..-1].match /[^\n]+\n/
+      ptr += match[0].size
+    end
+    
+    xml_raw = @raw[ptr..-13]
+    raise "xml size mismatch" unless xml_raw.size == @raw[-12..-9].unpack1('L')
+    @xml = Nokogiri.XML(xml_raw)
   end
 
+  def at(frame, roin)
+    
+  end
+
+  def inspect
+  end
+
+  def each_frame
+  end
 end
+
 class ADPL
   def initialize(path, name, options = {})
     @path = path

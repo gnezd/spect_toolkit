@@ -765,7 +765,8 @@ def test_fwhm
 end
 
 def test_sif
-  sif = SIF.new('testdata/Andor/Opticsstation - moving around 2.sif', 'moving_around_2')
+  puts "SIF reading test starts at #{Time.now.strftime('%H:%M:%S.%3N')}"
+  sif = SIF.new('testdata/Andor/Opticsstation - moving around 2.sif', 'moving_around_2', {debug: true})
 end
 
 #test_fwhm
