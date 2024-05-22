@@ -903,6 +903,7 @@ class Alignment
   end
 end
 
+# Princeton Instruments .spe format
 class Spe < Array
   attr_accessor :path, :name, :xml, :frames, :frame_width, :frame_height,:framesize, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :rois, :bin_to_spect
   
@@ -1097,6 +1098,12 @@ class Spe < Array
   end
 end
 
+# Andor .sif format
+class SIF
+  def initialize(path, name, options = {})
+  end
+
+end
 class ADPL
   def initialize(path, name, options = {})
     @path = path
@@ -1222,12 +1229,16 @@ def plot_spectra(spectra, options = {})
       raman_line = raman_line_match[1].to_f
       raman_line_match[2] = spectrum.units[0] unless raman_line_match[2]
       # Unit conversion if necessary
-      if raman_line_match[2] == 'nm'
+
+      case raman_line_match[2] 
+      when 'nm'
         # Do nothing
-      elsif raman_line_match[2] == 'wavenumber' || 'cm-1'
+      when 'wavenumber', 'cm-1'
         raman_line = 0.01/raman_line
-      elsif raman_line_match[2] == 'eV'
+      when 'eV'
         raman_line = 1239.84197 / raman_line
+      else
+        raise "spectral unit unexpected: #{raman_line_match[2]}"
       end
 
       case spectrum.units[0]

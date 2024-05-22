@@ -764,7 +764,11 @@ def test_fwhm
   puts spect.fwhm(peak: spect.max[0])
 end
 
-test_fwhm
+def test_sif
+  sif = SIF.new('testdata/Andor/Opticsstation - moving around 2.sif', 'moving_around_2')
+end
+
+#test_fwhm
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
 #tkcanvas_plot_test
@@ -780,3 +784,5 @@ test_fwhm
 #plot_map_test
 #read_image_spe_test
 
+
+test_sif
