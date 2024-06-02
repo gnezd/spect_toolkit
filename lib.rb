@@ -503,7 +503,7 @@ class Spectrum < Array
     @spectral_range = self.minmax_by { |pt| pt[0] }.map{ |pt| pt[0] }
     @signal_range = self.minmax_by { |pt| pt[1] }.map{ |pt| pt[1] }
     self.sort!
-    self.reverse! unless @units[0] == 'nm'
+    self.reverse! unless (@units[0] == 'nm' || @units[0] =='px')
   end
 
   def ma(radius)
@@ -1076,8 +1076,8 @@ class Spe < Array
       end
       result.name = "#{@name}-#{frame}-roi#{roin}"
 
-      result.update_info
       result.units = @spectrum_units
+      result.update_info
       return result
     end
       
@@ -1250,6 +1250,7 @@ class SIF < Array
     # Calibration lies within here? Yes
     match = @raw[ptr..-1].match /([^\n]+)\n/
     calib = match[1].split(" ").map{|s| s.to_f} # Calibration comes in polynomial coeffs, raising power
+    @spectrum_units = ['nm', 'counts'] unless calib == [0.0,1.0,0.0,0.0]
     puts "calib: #{calib.join ', '}" if debug
     ptr += match[0].size
     
@@ -1407,9 +1408,8 @@ class SIF < Array
         end
       end
       result.name = "#{@name}-#{frame}-roi#{roin}"
-
-      result.update_info
       result.units = @spectrum_units
+      result.update_info
       return result
     end
       
@@ -1430,7 +1430,13 @@ class ADPL
     @path = path
     @name = name
     options[:spectrum_unit] = 'nm' # Force to use nm for now
-    @spe = Spe.new path, name, options
+
+    case File.extname(@path)
+    when '.spe'
+      @spects = Spe.new path, name, options
+    when '.sif'
+      @spects = SIF.new path, name, options
+    end
     @scans_per_deg = 1
     @scans_per_deg = options[:scans_per_deg] if options[:scans_per_deg]
   end
@@ -1439,19 +1445,19 @@ class ADPL
   def plot(output_path)
 
     Dir.mkdir output_path unless Dir.exist? output_path
-    @spe.rois.each_with_index do |roi, roin|
-      data_export = Array.new(@spe.frames) {Array.new(@spe.rois[roin][:data_width]) {0}}
+    @spects.rois.each_with_index do |roi, roin|
+      data_export = Array.new(@spects.frames) {Array.new(@spects.rois[roin][:data_width]) {0}}
       frame = 0
-      while frame < @spe.frames
-        @spe.at(frame, roin).each_with_index do |pt, j|
+      while frame < @spects.frames
+        @spects.at(frame, roin).each_with_index do |pt, j|
           data_export[frame][j] = pt[1]
         end
         frame += 1
       end
       tsv_name = "#{@name}-#{roin}.tsv"
       matrix_write data_export.transpose, "#{output_path}/#{tsv_name}"
-      wvslope = (@spe.wv[roi[:x]+roi[:width]-2] - @spe.wv[roi[:x]])/roi[:data_width]
-      wvoffset = @spe.wv[roi[:x]]
+      wvslope = (@spects.wv[roi[:x]+roi[:width]-2] - @spects.wv[roi[:x]])/roi[:data_width]
+      wvoffset = @spects.wv[roi[:x]]
   gnuplot_content =<<GPLOTCONTENT
   set terminal png size 1000,800
   set xlabel 'wavelength (nm)'

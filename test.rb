@@ -776,7 +776,7 @@ def sif_wv_calib
   puts "Open a .sif file with calibration:"
   sif_w_calib = SIF.new 'testdata/Andor/ADPL_test_20frames_2ROIs_w_calibration.sif', 'w_calibration', {debug: true}
   puts "Now open one w/o calibration:"
-  sif_wo_calib = SIF.new 'testdata/Andor/ADPL_test_20frames_2ROIs.sif', 'w_calibration', {debug: true}
+  sif_wo_calib = SIF.new 'testdata/Andor/ADPL_test_20frames_2ROIs.sif', 'wo_calibration', {debug: true}
   binding.pry
 end
 
