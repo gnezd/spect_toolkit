@@ -1106,6 +1106,7 @@ class SIF < Array
     debug = options[:debug]
     @path = path
     @name = name
+    @spectrum_units = ['px', 'counts']
     raise "No such file #{@path}" unless File.exist? path
     @bin_to_spect = options[:bin_to_spect]
     @raw = File.open(@path, 'rb') {|f| f.read.freeze}
@@ -1120,11 +1121,10 @@ class SIF < Array
     linel = @raw[ptr..-1].index "\n"
     @ln2 = @raw[ptr..ptr+(linel-1)]
     ptr += (linel+1)
-    puts @ln2
 
     delim = @raw[ptr..-1].index(" ")
     @sif_ver = @raw[ptr..ptr+delim-1].to_i
-    puts "SIF version #{@sif_ver}"
+    puts "SIF version #{@sif_ver}" if debug
     ptr += (delim+1)
 
     raise "Expecting '0 0 1 ' but got '#{@raw[ptr..ptr+5]}'" unless @raw[ptr..ptr+5] == '0 0 1 '
@@ -1165,7 +1165,6 @@ class SIF < Array
     puts "16 mysterious entries" if debug
     16.times do
       match = @raw[ptr..-1].match /^(\S+)\s/
-      puts match[1] if debug
       ptr += match[0].size
     end
 
@@ -1238,6 +1237,7 @@ class SIF < Array
       @calb_line = match[1]
       ptr += match[0].size
     end
+    puts "#{ptr} after suspected spectrograph" if debug
 
     if @spectrograph.match /Mechelle/
       raise "We do not use Mechelle spectrometers, dropping support"
@@ -1247,11 +1247,16 @@ class SIF < Array
       ptr += match[0].size
     end
 
-    2.times do
-      match = @raw[ptr..-1].match /[^\n]+\n/
-      ptr += match[0].size
-      puts match[0]
-    end
+    # Calibration lies within here? Yes
+    match = @raw[ptr..-1].match /([^\n]+)\n/
+    calib = match[1].split(" ").map{|s| s.to_f} # Calibration comes in polynomial coeffs, raising power
+    puts "calib: #{calib.join ', '}" if debug
+    ptr += match[0].size
+    
+    # And a mysterious line of '0 1 0 0'
+    match = @raw[ptr..-1].match /[^\n]+\n/
+    puts "#{ptr}: #{match}" if debug
+    ptr += match[0].size
 
     match = @raw[ptr..-1].match /([^\n]+)\n/
     @raman = match[1]
@@ -1291,8 +1296,7 @@ class SIF < Array
     @frames, roi_n, @total_l, @image_l = match[1..4].map{|i| i.to_i} # Guess that roi_n == no_subimages
     ptr += match[0].size
 
-    # No calibration, px number
-    @wv = (1..@detector_dimension[0]).to_a
+    @wv = []
 
     # Construct @rois
     @rois = Array.new(roi_n)
@@ -1311,7 +1315,10 @@ class SIF < Array
         data_width: (x1-x0+1) / xbin,
         data_height: (y1-y0+1) / ybin
       }
+      # Calibration polynomial
+      @wv += ((x0..x1).map {|x| (0..3).map{|pwr| calib[pwr] * (x**pwr)}.reduce(:+)})
     end
+
     # Trim spaces
     #match = @raw[ptr..-1].match /\s+/
     #ptr += match[0].size
@@ -1418,6 +1425,7 @@ class SIF < Array
 end
 
 class ADPL
+  attr_reader :name
   def initialize(path, name, options = {})
     @path = path
     @name = name

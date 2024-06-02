@@ -772,6 +772,15 @@ def test_sif
   binding.pry
 end
 
+def sif_wv_calib
+  puts "Open a .sif file with calibration:"
+  sif_w_calib = SIF.new 'testdata/Andor/ADPL_test_20frames_2ROIs_w_calibration.sif', 'w_calibration', {debug: true}
+  puts "Now open one w/o calibration:"
+  sif_wo_calib = SIF.new 'testdata/Andor/ADPL_test_20frames_2ROIs.sif', 'w_calibration', {debug: true}
+  binding.pry
+end
+
+
 #test_fwhm
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
@@ -787,6 +796,6 @@ end
 #multi_roi_scan_test
 #plot_map_test
 #read_image_spe_test
+#test_sif
 
-
-test_sif
+sif_wv_calib
