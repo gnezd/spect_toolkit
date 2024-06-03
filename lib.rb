@@ -7,6 +7,7 @@ require 'nokogiri'
 require 'time'
 #require 'parallel'
 require 'json'
+require 'fileutils'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
@@ -261,7 +262,7 @@ class Scan < Array
 
     # Exporting map matrix
     outdir = @name unless outdir
-    Dir.mkdir outdir unless Dir.exist? outdir
+    FileUtils.mkdir_p outdir unless Dir.exist? outdir
     map_fout = File.open "#{outdir}/#{@name}.tsv", 'w'
     z = 0
     while z < @depth
@@ -1444,7 +1445,7 @@ class ADPL
   # Plotting ADPL data, with given density of scan per degree
   def plot(output_path)
 
-    Dir.mkdir output_path unless Dir.exist? output_path
+    FileUtils.mkdir_p output_path unless Dir.exist? output_path
     @spects.rois.each_with_index do |roi, roin|
       data_export = Array.new(@spects.frames) {Array.new(@spects.rois[roin][:data_width]) {0}}
       frame = 0
@@ -1535,7 +1536,7 @@ def plot_spectra(spectra, options = {})
     outdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
   puts "Ploting to #{outdir}" if debug
-  Dir.mkdir outdir unless Dir.exist? outdir
+  FileUtiils.mkdir_p outdir unless Dir.exist? outdir
 
   # Prepare plots
   plots = []
@@ -1649,7 +1650,7 @@ def plot_section(spectra, options = {})
   end
   
   puts "Ploting to #{outdir}" if debug
-  Dir.mkdir outdir unless Dir.exist? outdir
+  FileUtils.mkdir_p outdir unless Dir.exist? outdir
 
   data_fout = File.open(outdir+'/section-matrix.tsv', 'w')
   spectra.each do |spect|
@@ -1723,7 +1724,7 @@ end
 
 # Data form: [x1 y1-1 y2-1] [x2 y1-2 y2-2 ...]
 def quick_plot(data)
-  Dir.mkdir 'output' unless Dir.exists? 'output'
+  FileUtils.mkdir_p 'output' unless Dir.exists? 'output'
   raise "Some entries in data are different in length" unless data.all? {|line| line.size == data[0].size}
   data_fname = "data_#{Time.now.strftime("%d%b%Y-%H%M%S")}"
   data_fout = File.open "output/#{data_fname}.tsv", 'w'
