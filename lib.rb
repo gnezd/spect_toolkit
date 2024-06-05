@@ -1101,7 +1101,7 @@ end
 
 # Andor .sif format
 class SIF < Array
-  attr_accessor :path, :name, :sif_ver, :frames, :frame_width, :frame_height,:framesize, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :cycle_time, :accumulated_cycle_time, :accumulated_cycles, :temperature, :rois, :bin_to_spect
+  attr_accessor :path, :name, :sif_ver, :frames, :frame_width, :frame_height,:framesize, :wv, :spectrum_units, :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :cycle_time, :accumulated_cycle_time, :accumulated_cycles, :temperature, :rois, :bin_to_spect, :timestamps
   
   def initialize(path, name, options = {})
     debug = options[:debug]
@@ -1306,6 +1306,7 @@ class SIF < Array
       match = @raw[ptr..-1].match /\S+\s(\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (\S+)\n/
       x0, y1, x1, y0, ybin, xbin = match[1..6].map {|i| i.to_i}
       ptr += match[0].size
+      puts "Constructing ROI #{roii} at #{ptr}: " if debug
       @rois[roii] = {
         id:  roii,
         x:  x0-1,
@@ -1317,19 +1318,31 @@ class SIF < Array
         data_width: (x1-x0+1) / xbin,
         data_height: (y1-y0+1) / ybin
       }
+      puts @rois[roii] if debug
       # Calibration polynomial
       @wv += ((x0..x1).map {|x| (0..3).map{|pwr| calib[pwr] * (x**pwr)}.reduce(:+)})
     end
+    puts "ROI construction done" if debug
 
     # Trim spaces
     #match = @raw[ptr..-1].match /\s+/
     #ptr += match[0].size
     
     @timestamps = []
+    no_of_zero = 0
     (0..@frames-1).each do |frame|
-      match = @raw[ptr..-1].match /^\s+(\S+)\n/
+      match = @raw[ptr..-1].match /^\s?(\S+)\n/
       ptr += match[0].size
+      if match[1].to_f == 0.0
+        puts "#{match[0]} deemed to be 0.0 at #{ptr}"
+        if no_of_zero > 0
+          puts "Second timestamp 0.0. Impossible. Must be the end at #{ptr}" if debug
+          break
+        end
+        no_of_zero += 1
+      end
       @timestamps[frame] = match[1].to_f
+      puts "Timestame #{@timestamps[frame]} at #{ptr}" if debug
     end
 
     ptr +=2 if @raw[ptr..ptr+1] == "0\n"
@@ -1342,6 +1355,7 @@ class SIF < Array
       end
     end
     @data_offset = ptr
+    puts "Raw data offset: #{@data_offset}" if debug
     @framesize = @rois.map{|roi| roi[:data_width] * roi[:data_height]}.sum
     ptr += @frames * @framesize * 4
     
@@ -1349,10 +1363,11 @@ class SIF < Array
     4.times do
       match = @raw[ptr..-1].match /[^\n]+\n/
       ptr += match[0].size
+      puts "Blank line eaten. ptr: #{ptr}" if debug
     end
     
     xml_raw = @raw[ptr..-13]
-    raise "xml size mismatch" unless xml_raw.size == @raw[-12..-9].unpack1('L')
+    raise "xml size mismatch: should be #{xml_raw.size} but at the end specified as #{@raw[-12..-9].unpack1('L')}. ptr: #{ptr}" unless xml_raw.size == @raw[-12..-9].unpack1('L')
     @xml = Nokogiri.XML(xml_raw)
   end
 
@@ -1536,7 +1551,7 @@ def plot_spectra(spectra, options = {})
     outdir = "plot-" + Time.now.strftime("%d%b-%H%M%S")
   end
   puts "Ploting to #{outdir}" if debug
-  FileUtiils.mkdir_p outdir unless Dir.exist? outdir
+  FileUtils.mkdir_p outdir unless Dir.exist? outdir
 
   # Prepare plots
   plots = []
