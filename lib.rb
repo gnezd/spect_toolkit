@@ -1597,6 +1597,22 @@ class RbTkCanvas
   end
 end
 
+# Spectrum in memcached
+# Inheritance from Array doesn't seem possible anymore
+class SpectCache
+  attr_accessor :hosts, :name
+  def initialize(name, data, cache = Memcached.new('localhost'), metadata = {})
+    @name = name
+    @hosts = cache.servers
+    # Determine datafield type. Save space and time on integers! Default to float.
+    # See if wv needs to be generated
+
+    cache.set "spect_" + name, data.pack("D*")
+    metadata[:type] = 'D'
+    cache.set "spect_meta" + name, metadata
+  end
+end
+
 # Sparse methods below
 
 # Plot the spectra in an array

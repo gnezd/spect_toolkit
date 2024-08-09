@@ -780,7 +780,24 @@ def sif_wv_calib
   binding.pry
 end
 
+def test_memcached
+  fake_spect = (1..1340).map {rand}
+  cached_spect = SpectCache.new('fake1', fake_spect)
+  cache2 = Memcached.new
+  retreived_data = cache2.get 'spect_'+cached_spect.name
+  unpacked = retreived_data.unpack "D*"
+  puts "Equality of data? #{unpacked == fake_spect}"
+end
 
+def spectcache_external_cache_hndl
+  my_cache = Memcached.new 'localhost', { no_block: true, buffer_requests: true, noreply: true }
+  fake_spect = (1..1340).map {rand}
+  cached_spect = SpectCache.new 'fake1', fake_spect, my_cache
+  retreived_data = my_cache.get 'spect_'+cached_spect.name
+  unpacked = retreived_data.unpack "D*"
+  puts "cached_spect host: #{cached_spect.hosts}"
+  puts "Equality of data? #{unpacked == fake_spect}"
+end
 #test_fwhm
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
@@ -797,5 +814,6 @@ end
 #plot_map_test
 #read_image_spe_test
 #test_sif
+#sif_wv_calib
 
-sif_wv_calib
+spectcache_external_cache_hndl
