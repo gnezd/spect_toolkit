@@ -798,6 +798,51 @@ def spectcache_external_cache_hndl
   puts "cached_spect host: #{cached_spect.hosts}"
   puts "Equality of data? #{unpacked == fake_spect}"
 end
+
+class NotArray
+  attr_accessor :wv, :signal
+  def initialize
+    @wv = []
+    @signal = []
+  end
+
+  def [](i)
+    if i.is_a? Integer
+      [@wv[i], @signal[i]]
+    elsif i.is_a? Range
+      i.map {|index| self[index]}
+    end
+  end
+
+  def []=(i, input)
+    raise "Need a duple" unless input.is_a?(Array) && input.size == 2
+    @wv[i], @signal[i] = input
+  end
+
+  def size
+    @wv.size < @signal.size ? @wv.size : @signal.size
+  end
+
+  def to_arr
+    (0..size-1).map {|i| self[i]}
+  end
+
+  def inspect
+    if size < 20
+      self.to_arr.inspect
+    else
+      self[0..9].inspect[0..-2] + ' ... ' + self[-10..-1].inspect[1..-1]
+    end
+  end
+
+end
+
+def test_arr_override
+  notarr = NotArray.new
+  (0..19).each {|i| notarr[i] = [i, rand]}
+
+  binding.pry
+end
 #test_fwhm
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
@@ -815,5 +860,5 @@ end
 #read_image_spe_test
 #test_sif
 #sif_wv_calib
-
-spectcache_external_cache_hndl
+#spectcache_external_cache_hndl
+test_arr_override

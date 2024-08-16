@@ -472,6 +472,8 @@ class Spectrum < Array
     @desc = ''
     @units = ['', 'counts']
     super Array.new { [0.0, 0.0] }
+
+
     # Load from tsv/csv if path given
     # if path && (File.exist? path) too gracious!
     return unless path
