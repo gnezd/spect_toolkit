@@ -759,9 +759,13 @@ class Spectrum < Array
     ft.to_complex2.abs # Be positive
   end
 
-  def from_to(from, to)
+  def from_to(from, to=nil)
     sum = 0.0
-    sorted = [from, to].sort
+    if from.is_a?(Array) && from.size == 2 && to==nil
+      sorted = from.sort
+    else
+      sorted = [from, to].sort
+    end
     each do |pt|
       sum += pt[1] if (pt[0] > sorted[0]) && (pt[0] < sorted[1])
     end
