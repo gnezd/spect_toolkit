@@ -1,5 +1,5 @@
 require 'tk'
-require './lib'
+require "#{__dir__}/../lib"
 
 # Resizable Tk canvas
 class RCanvas < TkCanvas
