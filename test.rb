@@ -845,7 +845,15 @@ def test_arr_override
   binding.pry
 end
 
-test_fwhm
+def test_SpectCache
+  a = Spectrum.new
+  a.name = 'aaa'
+  a.wv = (0..99).to_a
+  a.signal = (0..99).map {rand}
+  binding.pry
+end
+
+#test_fwhm
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
 #tkcanvas_plot_test
@@ -864,3 +872,4 @@ test_fwhm
 #sif_wv_calib
 #spectcache_external_cache_hndl
 #test_arr_override
+test_SpectCache
