@@ -464,35 +464,37 @@ class Scan < Array
   end
 end
 
-class Spectrum < Array
-  attr_accessor :name, :units, :spectral_range, :signal_range, :desc
+class Spectrum
+  attr_accessor :name, :units, :desc, :wv, :signal, :cache
 
-  def initialize(path = nil)
+  def initialize(path = nil, wv = nil)
+    @wv = wv ? wv : []
+    @signal = []
     @name = ''
     @desc = ''
     @units = ['', 'counts']
-    super Array.new { [0.0, 0.0] }
 
 
     # Load from tsv/csv if path given
-    # if path && (File.exist? path) too gracious!
-    return unless path
+    if path && (File.exist? path)
+      fin = File.open path, 'r'
+      lines = fin.readlines
+      lines.shift if lines[0] =~ /^Frame[\t,]/
+      # Detection of seperator , or tab
+      raise "No seperator found in #{path}" unless match = lines[0].match(/[\t,]/)
 
-    fin = File.open path, 'r'
-    lines = fin.readlines
-    lines.shift if lines[0] =~ /^Frame[\t,]/
-    # Detection of seperator , or tab
-    raise "No seperator found in #{path}" unless match = lines[0].match(/[\t,]/)
-
-    puts "Loading from #{path}"
-    seperator = match[0]
-    lines.each_index do |i|
-      (wv, intensity) = lines[i].split seperator
-      wv = wv.to_f
-      intensity = intensity.to_f
-      self[i] = [wv, intensity]
+      puts "Loading from #{path}"
+      seperator = match[0]
+      lines.each_index do |i|
+        (wv, intensity) = lines[i].split seperator
+        wv = wv.to_f
+        intensity = intensity.to_f
+        @wv[i] = wv
+        @signal[i] = intensity
+      end
+      @name = File.basename(path)
     end
-    @name = File.basename(path)
+
     update_info
   end
 
@@ -504,14 +506,68 @@ class Spectrum < Array
     fout.close
   end
 
+  def [](i)
+    if i.is_a? Integer
+      [@wv[i], @signal[i]]
+    elsif i.is_a? Range
+      i.map {|index| self[index]}
+    end
+  end
+
+  def []=(i, input)
+    raise "Need a duple" unless input.is_a?(Array) && input.size == 2
+    @wv[i], @signal[i] = input # Mutating @wv[]
+  end
+
+  def size
+    @wv.size < @signal.size ? @wv.size : @signal.size
+  end
+
+  def to_arr
+    (0..size-1).map {|i| self[i]}
+  end
+
+  def each
+    # RRRR
+    (0..size-1).each {|i| yield [@wv[i], @signal[i]]}
+    self
+  end
+  
+  def each_with_index
+    (0..size-1).each {|i| yield [@wv[i], @signal[i]], i}
+  end
+
+  def push(pt)
+    raise "Expecting duple" unless pt.is_a?(Array) && pt.size == 2
+    @wv.push pt[0]
+    @signal.push pt[1]
+  end
+
   def inspect
-    { 'name' => @name, 'size' => size, 'spectral_range' => @spectral_range,
-      'signal_range' => @signal_range, 'desc' => @desc }.to_s
+    { 'name' => @name, 'size' => size, 'spectral_range' => spectral_range,
+      'signal_range' => signal_range, 'desc' => @desc }.to_s
+  end
+
+  def signal_range
+    @signal.minmax
+  end
+
+  def spectral_range
+    @wv.minmax
+  end
+
+  def sort!
+    order = (0..size-1).to_a.sort_by {|i| @wv[i]}
+    @wv = order.map {|i| @wv[i]}
+    @signal = order.map {|i| @signal[i]}
+  end
+
+  def reverse!
+    @wv.reverse!
+    @signal.reverse!
   end
 
   def update_info
-    @spectral_range = minmax_by { |pt| pt[0] }.map { |pt| pt[0] }
-    @signal_range = minmax_by { |pt| pt[1] }.map { |pt| pt[1] }
     sort!
     reverse! unless @units[0] == 'nm' || @units[0] == 'px'
   end
@@ -856,6 +912,11 @@ class Spectrum < Array
     end
     reverse! if is_wv
     result
+  end
+
+  def to_cache(cache = Memcached.new('localhost'))
+    @cache = SpectCache.new(@name, @signal, cache, {wv: @wv})
+    @cache
   end
 end
 

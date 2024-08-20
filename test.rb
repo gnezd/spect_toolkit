@@ -759,6 +759,7 @@ end
 
 def test_fwhm
   spect = Spectrum.new('./testdata/spectra/16.tsv')
+  binding.pry
   plot_spectra([spect], out_dir: 'scratch')
   puts spect.fwhm()
   puts spect.fwhm(peak: spect.max[0])
@@ -843,7 +844,8 @@ def test_arr_override
 
   binding.pry
 end
-#test_fwhm
+
+test_fwhm
 #load_scan_from_unbinned_spe
 #plot_spectra_term_test
 #tkcanvas_plot_test
@@ -861,4 +863,4 @@ end
 #test_sif
 #sif_wv_calib
 #spectcache_external_cache_hndl
-test_arr_override
+#test_arr_override
