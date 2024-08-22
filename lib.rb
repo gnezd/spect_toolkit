@@ -1636,7 +1636,6 @@ def plot_spectra(spectra, options = {})
 
   # Prepare plots
   plots = []
-  plots += options[:plotline_inject] if options[:plotline_inject]
   spectra.each_with_index do |spectrum, i|
     spectrum.write_tsv(outdir + '/' + spectrum.name + '.tsv')
     linestyle = "lt #{i + 1}"
@@ -1685,6 +1684,7 @@ def plot_spectra(spectra, options = {})
             end
     plots.push "'#{outdir}/#{spectrum.name}.tsv' u #{coord_ref} with lines #{linestyle} t '#{title}'"
   end
+  plots += options[:plotline_inject] if options[:plotline_inject]
   plotline = 'plot ' + plots.join(", \\\n")
 
   # Terminal dependent preparations
