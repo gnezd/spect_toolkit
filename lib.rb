@@ -465,45 +465,81 @@ class Scan < Array
 end
 
 class Spectrum
-  attr_accessor :name, :units, :desc, :wv, :signal, :cache
+  attr_accessor :meta, :wv, :signal
 
   def initialize(path = nil, wv = nil)
-    @wv = wv ? wv : []
-    @signal = []
-    @name = ''
-    @desc = ''
-    @units = ['', 'counts']
+    @meta = {
+      name: '',
+      desc: '',
+      units: ['', 'counts'],
+      cache_host: ''
+    }
 
+    @wv = (wv ? wv : [])
+    @signal = []
 
     # Load from tsv/csv if path given
     if path && (File.exist? path)
-      fin = File.open path, 'r'
-      lines = fin.readlines
-      lines.shift if lines[0] =~ /^Frame[\t,]/
-      # Detection of seperator , or tab
-      raise "No seperator found in #{path}" unless match = lines[0].match(/[\t,]/)
-
-      puts "Loading from #{path}"
-      seperator = match[0]
-      lines.each_index do |i|
-        (wv, intensity) = lines[i].split seperator
-        wv = wv.to_f
-        intensity = intensity.to_f
-        @wv[i] = wv
-        @signal[i] = intensity
+      begin
+        read_delimited(path)
+      rescue
+        puts "Unable to parse #{path} as a spectrum"
       end
-      @name = File.basename(path)
     end
 
     update_info
   end
 
-  def write_tsv(outname)
-    fout = File.open outname, 'w'
-    each do |pt|
-      fout.puts pt.join "\t"
-    end
-    fout.close
+  # Metadata related methods
+  def inspect
+    { 'name' => @name, 'size' => size, 'spectral_range' => spectral_range,
+      'signal_range' => signal_range, 'desc' => @desc }.to_s
+  end
+
+  def signal_range
+    @signal.minmax
+  end
+
+  def spectral_range
+    @wv.minmax
+  end
+
+  # Mirroing value retrieval and assignment to @meta
+  def name
+    @meta[:name]
+  end
+
+  def desc
+    @meta[:desc]
+  end
+
+  def units
+    @meta[:units]
+  end
+
+  def cache_host
+    @meta[:cache_host]
+  end
+
+  def name=(new_name)
+    @meta[:name] = new_name
+  end
+
+  def desc=(new_desc)
+    @meta[:desc] = new_desc
+  end
+
+  def units=(new_units)
+    @meta[:units] = new_units
+  end
+
+  def cache_host=(new_cache_host)
+    @meta[:cache_host] = new_cache_host
+  end
+
+  # Index/Array behavior related methods
+  def to_arr
+    (0..size-1).map {|i| self[i]}
   end
 
   def [](i)
@@ -523,10 +559,6 @@ class Spectrum
     @wv.size < @signal.size ? @wv.size : @signal.size
   end
 
-  def to_arr
-    (0..size-1).map {|i| self[i]}
-  end
-
   def each
     # RRRR
     (0..size-1).each {|i| yield [@wv[i], @signal[i]]}
@@ -536,24 +568,16 @@ class Spectrum
   def each_with_index
     (0..size-1).each {|i| yield [@wv[i], @signal[i]], i}
   end
+  
+  def each_index
+    (0..size-1).each {|i| yield i}
+  end
 
   def push(pt)
     raise "Expecting duple" unless pt.is_a?(Array) && pt.size == 2
     @wv.push pt[0]
     @signal.push pt[1]
-  end
-
-  def inspect
-    { 'name' => @name, 'size' => size, 'spectral_range' => spectral_range,
-      'signal_range' => signal_range, 'desc' => @desc }.to_s
-  end
-
-  def signal_range
-    @signal.minmax
-  end
-
-  def spectral_range
-    @wv.minmax
+    [@wv.last, @signal.last]
   end
 
   def sort!
@@ -569,9 +593,10 @@ class Spectrum
 
   def update_info
     sort!
-    reverse! unless @units[0] == 'nm' || @units[0] == 'px'
+    reverse! unless @meta[:units][0] == 'nm' || @meta[:units][0] == 'px'
   end
 
+  # Data processing methods
   def ma(radius)
     # +- radius points moving average
     # Issue: Radius defined on no of points but not real spectral spread
@@ -916,6 +941,34 @@ class Spectrum
     end
     reverse! if is_wv
     result
+  end
+
+  # IO related methods
+  def read_delimited(path)
+    fin = File.open path, 'r'
+    lines = fin.readlines
+    lines.shift if lines[0] =~ /^Frame[\t,]/
+    # Detection of seperator , or tab
+    raise "No seperator found in #{path}" unless match = lines[0].match(/[\t,]/)
+
+    puts "Loading from #{path}"
+    seperator = match[0]
+    lines.each_index do |i|
+      (wv, intensity) = lines[i].split seperator
+      wv = wv.to_f
+      intensity = intensity.to_f
+      @wv[i] = wv
+      @signal[i] = intensity
+    end
+    @meta[:name] = File.basename(path)
+  end
+
+  def write_tsv(outname)
+    fout = File.open outname, 'w'
+    each do |pt|
+      fout.puts pt.join "\t"
+    end
+    fout.close
   end
 
   def to_cache(host = Memcached.new('localhost'))
