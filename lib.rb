@@ -918,8 +918,8 @@ class Spectrum
     result
   end
 
-  def to_cache(cache = Memcached.new('localhost'))
-    @cache = SpectCache.new(@name, @signal, cache, {wv: @wv})
+  def to_cache(host = Memcached.new('localhost'))
+    @cache = SpectCache.new(@name, @signal, host, {wv: @wv})
     @cache
   end
 end
