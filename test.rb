@@ -39,5 +39,11 @@ class TestSpectrum < Minitest::Test
     puts "Randomly checking if slice[#{index_in_slice}] == @spect_tsv[#{first+index_in_slice}]"
     assert_equal slice[index_in_slice], @spect_tsv[index_in_slice+first]
   end
+  
+  def test_to_cache
+    spect = Spectrum.new
+    spect_cache = spect.to_cache
+    assert_kind_of SpectCache, spect_cache
+  end
 
 end
