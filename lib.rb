@@ -779,6 +779,16 @@ class Spectrum
   end
 
   def -(other)
+    update_info
+    unless other.is_a? Spectrum
+      raise "Expecting Spectrum or Numeric input" unless other.is_a? Numeric
+      other_num = other.to_f
+      other = Spectrum.new
+      other.name = "Constant #{other}"
+      other.push [self[0][0], other_num]
+      other.push [self[-1][0], other_num]
+    end
+
     sample = map { |pt| pt[0] }.union(other.map { |pt| pt[0] })
     self_resampled = resample(sample)
     input_resmpled = other.resample(sample)
@@ -829,13 +839,11 @@ class Spectrum
   end
 
   def stdev
-    sum = 0.0
     sos = 0.0 # sum of squares
     each do |pt|
-      sum += pt[1]
       sos += pt[1]**2
     end
-    ((sos - sum**2) / @size)**0.5
+    ((sos/size - (sum/size)**2))**0.5
   end
 
   def fft
@@ -844,16 +852,16 @@ class Spectrum
   end
 
   def from_to(from, to=nil)
-    sum = 0.0
+    result = Spectrum.new
     if from.is_a?(Array) && from.size == 2 && to==nil
       sorted = from.sort
     else
       sorted = [from, to].sort
     end
     each do |pt|
-      sum += pt[1] if (pt[0] > sorted[0]) && (pt[0] < sorted[1])
+      result.push pt if (pt[0] > sorted[0]) && (pt[0] < sorted[1])
     end
-    sum
+    result
   end
 
   def max
