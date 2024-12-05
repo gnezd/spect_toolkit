@@ -5,13 +5,21 @@ require 'pry'
 def adpl_proc(adpls, ranges, path)
   puts "Processing..."
   adpls.each_index do |ith|
-    # Default summation range is full range
-    range = adpls[ith].spects.at(0,1).spectral_range
-    range = ranges[ith] if ranges[ith]
-    puts "#{ith}: #{adpls[ith].name}. Range: #{range}"
+
+    normal_fl = adpls[ith].spects.at(adpls[ith].spects.frames/2, 0)
+    
+    if ranges[ith] == nil
+      # Default range: peak +/- 0.5fwhm
+      peak = normal_fl.max[0]
+      width = normal_fl.fwhm / 2
+      range = [peak-width, peak+width]
+      puts "#{ith}: #{adpls[ith].name}. Max position: #{peak}, Width: #{width}"
+    else
+      range = ranges[ith]
+    end
 
     # Construct data rows for plotting and write to datafile
-    data = (0..adpls[ith].spects.frames-1).map {|angle| [angle, adpls[ith].spects.at(angle, 0).from_to(range), adpls[ith].spects.at(angle, 1).from_to(range)]}
+    data = (0..adpls[ith].spects.frames-1).map {|angle| [angle, adpls[ith].spects.at(angle, 0).from_to(*range), adpls[ith].spects.at(angle, 1).from_to(*range)]}
     matrix_write(data.transpose, "#{path}#{adpls[ith].name}.tsv")
 
     # Construct gnuplot instructions

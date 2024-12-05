@@ -40,4 +40,11 @@ class TestSpectrum < Minitest::Test
     assert_equal slice[index_in_slice], @spect_tsv[index_in_slice+first]
   end
 
+  def test_cache
+    sp1 = Spectrum.new
+    (0..99).each do |x|
+      sp1
+    end
+  end
+
 end
