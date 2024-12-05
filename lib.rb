@@ -492,7 +492,7 @@ class Spectrum
 
   # Metadata related methods
   def inspect
-    { 'name' => @name, 'size' => size, 'spectral_range' => spectral_range,
+    { 'name' => @meta[:name], 'size' => size, 'spectral_range' => spectral_range,
       'signal_range' => signal_range, 'desc' => @desc }.to_s
   end
 
@@ -980,7 +980,10 @@ class Spectrum
   end
 
   def to_cache(host = Memcached.new('localhost'))
-    @cache = SpectCache.new(@name, @signal, host, {wv: @wv})
+    if @meta[:name] == ''
+      @meta[:name] = 'cache-' + Time.now.strftime("%s.%6N")
+    end
+    @cache = SpectCache.new(@meta[:name], @signal, host, {wv: @wv})
     @cache
   end
 end
@@ -1728,18 +1731,16 @@ end
 # Spectrum in memcached
 # Inheritance from Array doesn't seem possible anymore
 class SpectCache
-  attr_accessor :hosts, :name
-  def initialize(name, data, cache = Memcached.new('localhost'), metadata = {})
+  attr_accessor :hosts, :name, :meta
+  def initialize(name, data, cache = Memcached.new('localhost'), meta = {})
     @name = name
     @hosts = cache.servers
-
+    @meta = meta
     # Determine datafield type. Save space and time on integers! Default to float.
     # See if wv needs to be generated
-    if metadata[:type]
-    else
-      cache.set "spect_" + name, data.pack("D*")
-      metadata[:type] = 'D'
-    end
+
+    cache.set "spect_" + name, data.pack("D*")
+    metadata[:type] = 'D'
     cache.set "spect_meta" + name, metadata
   end
 end
