@@ -47,9 +47,20 @@ class TestSpectrum < Minitest::Test
   end
 
   def test_cache
+    # Prepare spectrum
     sp1 = Spectrum.new
     (0..99).each do |x|
-      sp1
+      sp1.push [x, rand(65535)]
+    end
+
+    sp1.meta[:type] = 'S'
+    sp1.meta[:wvtype] = 'S' # 0 ~ 65535
+
+    sp1_cached = sp1.to_cache
+    sp2 = sp1_cached.to_spectrum
+
+    (0..99).each do |i|
+      assert_equal sp1[i], sp2[i]
     end
   end
 

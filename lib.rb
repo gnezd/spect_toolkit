@@ -465,14 +465,15 @@ class Scan < Array
 end
 
 class Spectrum
-  attr_accessor :meta, :wv, :signal
+  attr_accessor :meta, :wv, :signal, :cache_host
 
   def initialize(path = nil, wv = nil)
     @meta = {
-      name: '',
+      name: "#{Time.now.strftime("%Y%b%d-%H%M%S.%6N")}",
       desc: '',
       units: ['', 'counts'],
-      cache_host: ''
+      type: 'D',
+      wvtype: 'D'
     }
 
     @wv = (wv ? wv : [])
@@ -517,10 +518,6 @@ class Spectrum
     @meta[:units]
   end
 
-  def cache_host
-    @meta[:cache_host]
-  end
-
   def name=(new_name)
     @meta[:name] = new_name
   end
@@ -531,10 +528,6 @@ class Spectrum
 
   def units=(new_units)
     @meta[:units] = new_units
-  end
-
-  def cache_host=(new_cache_host)
-    @meta[:cache_host] = new_cache_host
   end
 
   # Index/Array behavior related methods
@@ -971,11 +964,19 @@ class Spectrum
     fout.close
   end
 
-  def to_cache(host = Memcached.new('localhost'))
+  def to_cache(host = nil)
+    unless host
+      if @cache_host
+        host = @cache_host 
+      else
+        host = Memcached.new('localhost')
+      end
+    end
+
     if @meta[:name] == ''
       @meta[:name] = 'cache-' + Time.now.strftime("%s.%6N")
     end
-    @cache = SpectCache.new(@meta[:name], @signal, host, {wv: @wv})
+    @cache = SpectCache.new(@signal, host, @meta, @wv)
     @cache
   end
 end
@@ -1724,17 +1725,43 @@ end
 # Inheritance from Array doesn't seem possible anymore
 class SpectCache
   attr_accessor :hosts, :name, :meta
-  def initialize(name, data, cache = Memcached.new('localhost'), meta = {})
-    @name = name
-    @hosts = cache.servers
-    @meta = meta
-    # Determine datafield type. Save space and time on integers! Default to float.
-    # See if wv needs to be generated
+  def initialize(data, cache, meta, wv = [])
+    @name = meta[:name]
+    @cache = cache
+    meta = meta
 
-    cache.set "spect_" + name, data.pack("D*")
-    @meta[:type] = 'D'
-    cache.set "spect_meta" + name, @meta
+    # Determine datafield type. Save space and time on integers! Default to double.
+    type = meta[:type] ? meta[:type] : 'D'
+    wvtype = meta[:wvtype] ? meta[:wvtype] : 'D'
+    
+    @cache.set "spect_" + @name, data.pack("#{type}*")
+    @cache.set "spect_meta_" + @name, meta.to_json
+
+    # See if wv needs to be set
+    # Assume wavelength type to always be double
+    if meta[:wv_ref] == nil
+      @cache.set "spect_wv_"+ @name, wv.pack("#{wvtype}*")
+    end
   end
+
+  def to_spectrum
+    meta = JSON.parse(@cache.get("spect_meta_#{@name}")).transform_keys {|k| k.to_sym}
+    if meta[:wv_ref]
+      wv = @cache.get("spect_wv_#{meta[:wv_ref]}").unpack("#{meta[:wvtype]}*")
+    else
+      wv = @cache.get("spect_wv_#{@name}").unpack("#{meta[:wvtype]}*")
+    end
+
+    signal = @cache.get("spect_#{@name}").unpack("#{meta[:type]}*")
+    spect = Spectrum.new
+    spect.meta = meta
+    spect.wv = wv if wv.size > 0
+    spect.signal = signal
+    spect.cache_host = @cache
+
+    spect
+  end
+
 end
 
 # Sparse methods below
