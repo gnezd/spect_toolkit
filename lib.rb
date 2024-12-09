@@ -1732,7 +1732,7 @@ class SpectCache
 
     # Determine datafield type. Save space and time on integers! Default to double.
     type = meta[:type] ? meta[:type] : 'D'
-    wvtype = meta[:wvtype] ? meta[:wvtype] : 'D'
+    wvtype = meta[:wv_type] ? meta[:wv_type] : 'D'
     
     @cache.set "spect_" + @name, data.pack("#{type}*")
     @cache.set "spect_meta_" + @name, meta.to_json
@@ -1747,9 +1747,9 @@ class SpectCache
   def to_spectrum
     meta = JSON.parse(@cache.get("spect_meta_#{@name}")).transform_keys {|k| k.to_sym}
     if meta[:wv_ref]
-      wv = @cache.get("spect_wv_#{meta[:wv_ref]}").unpack("#{meta[:wvtype]}*")
+      wv = @cache.get("spect_wv_#{meta[:wv_ref]}").unpack("#{meta[:wv_type]}*")
     else
-      wv = @cache.get("spect_wv_#{@name}").unpack("#{meta[:wvtype]}*")
+      wv = @cache.get("spect_wv_#{@name}").unpack("#{meta[:wv_type]}*")
     end
 
     signal = @cache.get("spect_#{@name}").unpack("#{meta[:type]}*")

@@ -39,29 +39,40 @@ class TestSpectrum < Minitest::Test
     puts "Randomly checking if slice[#{index_in_slice}] == @spect_tsv[#{first+index_in_slice}]"
     assert_equal slice[index_in_slice], @spect_tsv[index_in_slice+first]
   end
-  
-  def test_to_cache
-    spect = Spectrum.new
-    spect_cache = spect.to_cache
-    assert_kind_of SpectCache, spect_cache
-  end
 
   def test_cache
     # Prepare spectrum
     sp1 = Spectrum.new
     (0..99).each do |x|
-      sp1.push [x, rand(65535)]
+      sp1.push [x, rand(65536)]
     end
-
+    
+    # Set types
     sp1.meta[:type] = 'S'
-    sp1.meta[:wvtype] = 'S' # 0 ~ 65535
+    sp1.meta[:wv_type] = 'S' # 0 ~ 65535
 
+    # Create SpectCache and type check
     sp1_cached = sp1.to_cache
+    assert_kind_of SpectCache, sp1_cached
+    
+    # Convert back to Spectrum and value check
     sp2 = sp1_cached.to_spectrum
-
     (0..99).each do |i|
       assert_equal sp1[i], sp2[i]
     end
+
+    # Create valued spectrum
+    sp3 = Spectrum.new
+    sp3.meta[:name] = 'sp3'
+    sp3.meta[:type] = 'S'
+    sp3.meta[:wv_type] = 'S'
+    sp3.signal= (0..99).to_a.map {rand(65536)}
+    sp3.meta[:wv_ref] = sp1.meta[:name]
+    sp3_spcache = sp3.to_cache
+    sp3 = sp3_spcache.to_spectrum
+
+    assert_equal sp3.wv, sp1.wv
+
   end
 
 end
