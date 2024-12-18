@@ -1508,7 +1508,7 @@ class SIF < Array
 
     xml_raw = @raw[ptr..-13]
     unless xml_raw.size == @raw[-12..-9].unpack1('L')
-      raise "xml size mismatch: should be #{xml_raw.size} but at the end specified as #{@raw[-12..-9].unpack1('L')}. ptr: #{ptr}"
+      puts "xml size mismatch: should be #{xml_raw.size} but at the end specified as #{@raw[-12..-9].unpack1('L')}. ptr: #{ptr}"
     end
 
     # Set unit and name
