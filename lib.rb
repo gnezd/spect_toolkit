@@ -1725,7 +1725,7 @@ end
 # Inheritance from Array doesn't seem possible anymore
 class SpectCache
   attr_accessor :hosts, :name, :meta
-  def initialize(data, cache, meta, wv = [])
+  def old_initialize(data, cache, meta, wv = [])
     @name = meta[:name]
     @cache = cache
     meta = meta
@@ -1734,6 +1734,7 @@ class SpectCache
     type = meta[:type] ? meta[:type] : 'D'
     wvtype = meta[:wv_type] ? meta[:wv_type] : 'D'
     
+    # Actually placing the cache
     @cache.set "spect_" + @name, data.pack("#{type}*")
     @cache.set "spect_meta_" + @name, meta.to_json
 
@@ -1742,6 +1743,25 @@ class SpectCache
     if meta[:wv_ref] == nil
       @cache.set "spect_wv_"+ @name, wv.pack("#{wvtype}*")
     end
+  end
+
+  def initialize(cache, name, options = {}) # optional data input determins init mode
+    @cache = cache
+    raise "Not a Memcached!" unless @cache.is_a? Memcached
+    @name = name
+    @meta = {}
+    @meta[:name] = name
+
+    
+  end
+
+  def meta
+  end
+
+  def wv
+  end
+
+  def data
   end
 
   def to_spectrum
