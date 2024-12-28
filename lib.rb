@@ -1749,8 +1749,14 @@ class SpectCache
     @cache = cache
     raise "Not a Memcached!" unless @cache.is_a? Memcached
     @name = name
-    @meta = {}
-    @meta[:name] = name
+    if options[:meta]
+      @meta = options[:meta]
+      if options[:data]
+      end
+    else
+      @meta = {}
+      @meta[:name] = name
+    end
 
     
   end
