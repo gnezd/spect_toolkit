@@ -1750,6 +1750,7 @@ class SpectCache
       @wv = @cache.get("spect_wv_#{@name}").unpack("#{meta[:wv_type]}*")
     end
     @data = @cache.get("spect_#{@name}").unpack("#{meta[:type]}*")
+    true
   end
 
   def write_cache
@@ -1764,6 +1765,7 @@ class SpectCache
     if @meta[:wv_ref] == nil
       @cache.set "spect_wv_"+ @name, wv.pack("#{wvtype}*")
     end
+    true
   end
 
   def to_spectrum
