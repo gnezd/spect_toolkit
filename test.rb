@@ -53,6 +53,7 @@ class TestSpectrum < Minitest::Test
 
     # Create SpectCache and type check
     sp1_cached = sp1.to_cache
+    puts "Created SpectCache with name #{sp1_cached.name}"
     assert_kind_of SpectCache, sp1_cached
     
     # Convert back to Spectrum and value check
@@ -60,6 +61,7 @@ class TestSpectrum < Minitest::Test
     (0..99).each do |i|
       assert_equal sp1[i], sp2[i]
     end
+    puts "SpectCache #{sp1_cached.name} transformed back to Spectrum and value was the same"
 
     # Create valued spectrum
     sp3 = Spectrum.new
@@ -70,8 +72,10 @@ class TestSpectrum < Minitest::Test
     sp3.meta[:wv_ref] = sp1.meta[:name]
     sp3_spcache = sp3.to_cache
     sp3 = sp3_spcache.to_spectrum
+    puts "SpectCache #{sp3.name} created reusing wavelength of SpectCache #{sp1.name}"
 
     assert_equal sp3.wv, sp1.wv
+    puts "And their wvs are the same"
 
   end
 

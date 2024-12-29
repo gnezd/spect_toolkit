@@ -973,10 +973,12 @@ class Spectrum
       end
     end
 
+    # Must be given a name for cache access
     if @meta[:name] == ''
       @meta[:name] = 'cache-' + Time.now.strftime("%s.%6N")
     end
-    @cache = SpectCache.new(@signal, host, @meta, @wv)
+
+    @cache = SpectCache.new(host, @meta[:name], {meta: @meta, data: @signal, wv:@wv})
     @cache
   end
 end
@@ -1724,65 +1726,52 @@ end
 # Spectrum in memcached
 # Inheritance from Array doesn't seem possible anymore
 class SpectCache
-  attr_accessor :hosts, :name, :meta
-  def old_initialize(data, cache, meta, wv = [])
-    @name = meta[:name]
-    @cache = cache
-    meta = meta
-
-    # Determine datafield type. Save space and time on integers! Default to double.
-    type = meta[:type] ? meta[:type] : 'D'
-    wvtype = meta[:wv_type] ? meta[:wv_type] : 'D'
-    
-    # Actually placing the cache
-    @cache.set "spect_" + @name, data.pack("#{type}*")
-    @cache.set "spect_meta_" + @name, meta.to_json
-
-    # See if wv needs to be set
-    # Assume wavelength type to always be double
-    if meta[:wv_ref] == nil
-      @cache.set "spect_wv_"+ @name, wv.pack("#{wvtype}*")
-    end
-  end
+  attr_accessor :cache, :name, :meta, :wv, :data
 
   def initialize(cache, name, options = {}) # optional data input determins init mode
     @cache = cache
     raise "Not a Memcached!" unless @cache.is_a? Memcached
     @name = name
-    if options[:meta]
-      @meta = options[:meta]
-      if options[:data]
-      end
-    else
-      @meta = {}
-      @meta[:name] = name
+    @meta = options[:meta]
+    @data = options[:data]
+    @wv = options[:wv]
+    if @data # Only case that warrants a write at init would be data-containing new()
+      puts "Data input at init, writing cache"
+      write_cache
     end
-
-    
+    self 
   end
 
-  def meta
+  def read_cache
+    @meta = JSON.parse(@cache.get("spect_meta_" + @name)).transform_keys {|k| k.to_sym}
+    if @meta[:wv_ref]
+      @wv = @cache.get("spect_wv_#{meta[:wv_ref]}").unpack("#{meta[:wv_type]}*")
+    else
+      @wv = @cache.get("spect_wv_#{@name}").unpack("#{meta[:wv_type]}*")
+    end
+    @data = @cache.get("spect_#{@name}").unpack("#{meta[:type]}*")
   end
 
-  def wv
-  end
+  def write_cache
+    # Determine datafield type. Save space and time on integers! Default to double.
+    type = @meta[:type] ? @meta[:type] : 'D'
+    wvtype = @meta[:wv_type] ? @meta[:wv_type] : 'D'
+    @cache.set "spect_" + @name, @data.pack("#{type}*")
+    @cache.set "spect_meta_" + @name, @meta.to_json
 
-  def data
+    # See if wv needs to be set
+    # Assume wavelength type to always be double
+    if @meta[:wv_ref] == nil
+      @cache.set "spect_wv_"+ @name, wv.pack("#{wvtype}*")
+    end
   end
 
   def to_spectrum
-    meta = JSON.parse(@cache.get("spect_meta_#{@name}")).transform_keys {|k| k.to_sym}
-    if meta[:wv_ref]
-      wv = @cache.get("spect_wv_#{meta[:wv_ref]}").unpack("#{meta[:wv_type]}*")
-    else
-      wv = @cache.get("spect_wv_#{@name}").unpack("#{meta[:wv_type]}*")
-    end
-
-    signal = @cache.get("spect_#{@name}").unpack("#{meta[:type]}*")
+    read_cache
     spect = Spectrum.new
-    spect.meta = meta
-    spect.wv = wv if wv.size > 0
-    spect.signal = signal
+    spect.meta = @meta
+    spect.wv = @wv if @wv.size > 0
+    spect.signal = @data
     spect.cache_host = @cache
 
     spect
