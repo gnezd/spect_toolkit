@@ -566,6 +566,10 @@ class Spectrum
     (0..size-1).each {|i| yield i}
   end
 
+  def map
+    (0..size-1).map {|i| yield [@wv[i], @signal[i]]}  
+  end
+
   def push(pt)
     raise "Expecting duple" unless pt.is_a?(Array) && pt.size == 2
     @wv.push pt[0]
