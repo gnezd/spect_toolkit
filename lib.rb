@@ -473,7 +473,7 @@ class Spectrum
       desc: '',
       units: ['', 'counts'],
       type: 'D',
-      wvtype: 'D'
+      wv_type: 'D'
     }
 
     @wv = (wv ? wv : [])
