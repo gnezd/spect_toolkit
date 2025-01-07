@@ -464,56 +464,136 @@ class Scan < Array
   end
 end
 
-class Spectrum < Array
-  attr_accessor :name, :units, :spectral_range, :signal_range, :desc
+class Spectrum
+  attr_accessor :meta, :wv, :signal, :cache_host
 
-  def initialize(path = nil)
-    @name = ''
-    @desc = ''
-    @units = ['', 'counts']
-    super Array.new { [0.0, 0.0] }
+  def initialize(path = nil, wv = nil)
+    @meta = {
+      name: "#{Time.now.strftime("%Y%b%d-%H%M%S.%6N")}",
+      desc: '',
+      units: ['', 'counts'],
+      type: 'D',
+      wv_type: 'D'
+    }
+
+    @wv = (wv ? wv : [])
+    @signal = []
+
     # Load from tsv/csv if path given
-    # if path && (File.exist? path) too gracious!
-    return unless path
-
-    fin = File.open path, 'r'
-    lines = fin.readlines
-    lines.shift if lines[0] =~ /^Frame[\t,]/
-    # Detection of seperator , or tab
-    raise "No seperator found in #{path}" unless match = lines[0].match(/[\t,]/)
-
-    puts "Loading from #{path}"
-    seperator = match[0]
-    lines.each_index do |i|
-      (wv, intensity) = lines[i].split seperator
-      wv = wv.to_f
-      intensity = intensity.to_f
-      self[i] = [wv, intensity]
+    if path && (File.exist? path)
+      begin
+        read_delimited(path)
+      rescue
+        puts "Unable to parse #{path} as a spectrum"
+      end
     end
-    @name = File.basename(path)
+
     update_info
   end
 
-  def write_tsv(outname)
-    fout = File.open outname, 'w'
-    each do |pt|
-      fout.puts pt.join "\t"
-    end
-    fout.close
+  # Metadata related methods
+  def inspect
+    { 'name' => @meta[:name], 'size' => size, 'spectral_range' => spectral_range,
+      'signal_range' => signal_range, 'desc' => @desc }.to_s
   end
 
-  def inspect
-    { 'name' => @name, 'size' => size, 'spectral_range' => @spectral_range,
-      'signal_range' => @signal_range, 'desc' => @desc }.to_s
+  def signal_range
+    @signal.minmax
+  end
+
+  def spectral_range
+    @wv.minmax
+  end
+
+  # Mirroing value retrieval and assignment to @meta
+  def name
+    @meta[:name]
+  end
+
+  def desc
+    @meta[:desc]
+  end
+
+  def units
+    @meta[:units]
+  end
+
+  def name=(new_name)
+    @meta[:name] = new_name
+  end
+
+  def desc=(new_desc)
+    @meta[:desc] = new_desc
+  end
+
+  def units=(new_units)
+    @meta[:units] = new_units
+  end
+
+  # Index/Array behavior related methods
+  def to_arr
+    (0..size-1).map {|i| self[i]}
+  end
+
+  def [](i)
+    if i.is_a? Integer
+      [@wv[i], @signal[i]]
+    elsif i.is_a? Range
+      i.map {|index| self[index]}
+    end
+  end
+
+  def []=(i, input)
+    raise "Need a duple" unless input.is_a?(Array) && input.size == 2
+    @wv[i], @signal[i] = input # Mutating @wv[]
+  end
+
+  def size
+    @wv.size < @signal.size ? @wv.size : @signal.size
+  end
+
+  def each
+    # RRRR
+    (0..size-1).each {|i| yield [@wv[i], @signal[i]]}
+    self
+  end
+  
+  def each_with_index
+    (0..size-1).each {|i| yield [@wv[i], @signal[i]], i}
+  end
+  
+  def each_index
+    (0..size-1).each {|i| yield i}
+  end
+
+  def map
+    (0..size-1).map {|i| yield [@wv[i], @signal[i]]}  
+  end
+
+  def push(pt)
+    raise "Expecting duple" unless pt.is_a?(Array) && pt.size == 2
+    @wv.push pt[0]
+    @signal.push pt[1]
+    [@wv.last, @signal.last]
+  end
+
+  def sort!
+    order = (0..size-1).to_a.sort_by {|i| @wv[i]}
+    @wv = order.map {|i| @wv[i]}
+    @signal = order.map {|i| @signal[i]}
+  end
+
+  def reverse!
+    @wv.reverse!
+    @signal.reverse!
   end
 
   def update_info
-    @spectral_range = minmax_by { |pt| pt[0] }.map { |pt| pt[0] }
-    @signal_range = minmax_by { |pt| pt[1] }.map { |pt| pt[1] }
     sort!
-    reverse! unless @units[0] == 'nm' || @units[0] == 'px'
+    reverse! unless @meta[:units][0] == 'nm' || @meta[:units][0] == 'px'
   end
 
+  # Data processing methods
   def ma(radius)
     # +- radius points moving average
     # Issue: Radius defined on no of points but not real spectral spread
@@ -696,16 +776,6 @@ class Spectrum < Array
   end
 
   def -(other)
-    update_info
-    unless other.is_a? Spectrum
-      raise "Expecting Spectrum or Numeric input" unless other.is_a? Numeric
-      other_num = other.to_f
-      other = Spectrum.new
-      other.name = "Constant #{other}"
-      other.push [self[0][0], other_num]
-      other.push [self[-1][0], other_num]
-    end
-
     sample = map { |pt| pt[0] }.union(other.map { |pt| pt[0] })
     self_resampled = resample(sample)
     input_resmpled = other.resample(sample)
@@ -756,11 +826,13 @@ class Spectrum < Array
   end
 
   def stdev
+    sum = 0.0
     sos = 0.0 # sum of squares
     each do |pt|
+      sum += pt[1]
       sos += pt[1]**2
     end
-    ((sos/size - (sum/size)**2))**0.5
+    ((sos - sum**2) / @size)**0.5
   end
 
   def fft
@@ -769,16 +841,16 @@ class Spectrum < Array
   end
 
   def from_to(from, to=nil)
-    result = Spectrum.new
+    sum = 0.0
     if from.is_a?(Array) && from.size == 2 && to==nil
       sorted = from.sort
     else
       sorted = [from, to].sort
     end
     each do |pt|
-      result.push pt if (pt[0] > sorted[0]) && (pt[0] < sorted[1])
+      sum += pt[1] if (pt[0] > sorted[0]) && (pt[0] < sorted[1])
     end
-    result
+    sum
   end
 
   def max
@@ -866,6 +938,52 @@ class Spectrum < Array
     end
     reverse! if is_wv
     result
+  end
+
+  # IO related methods
+  def read_delimited(path)
+    fin = File.open path, 'r'
+    lines = fin.readlines
+    lines.shift if lines[0] =~ /^Frame[\t,]/
+    # Detection of seperator , or tab
+    raise "No seperator found in #{path}" unless match = lines[0].match(/[\t,]/)
+
+    puts "Loading from #{path}"
+    seperator = match[0]
+    lines.each_index do |i|
+      (wv, intensity) = lines[i].split seperator
+      wv = wv.to_f
+      intensity = intensity.to_f
+      @wv[i] = wv
+      @signal[i] = intensity
+    end
+    @meta[:name] = File.basename(path)
+  end
+
+  def write_tsv(outname)
+    fout = File.open outname, 'w'
+    each do |pt|
+      fout.puts pt.join "\t"
+    end
+    fout.close
+  end
+
+  def to_cache(host = nil)
+    unless host
+      if @cache_host
+        host = @cache_host 
+      else
+        host = Memcached.new('localhost')
+      end
+    end
+
+    # Must be given a name for cache access
+    if @meta[:name] == ''
+      @meta[:name] = 'cache-' + Time.now.strftime("%s.%6N")
+    end
+
+    @cache = SpectCache.new(host, @meta[:name], {meta: @meta, data: @signal, wv:@wv})
+    @cache
   end
 end
 
@@ -1396,7 +1514,7 @@ class SIF < Array
 
     xml_raw = @raw[ptr..-13]
     unless xml_raw.size == @raw[-12..-9].unpack1('L')
-      raise "xml size mismatch: should be #{xml_raw.size} but at the end specified as #{@raw[-12..-9].unpack1('L')}. ptr: #{ptr}"
+      puts "xml size mismatch: should be #{xml_raw.size} but at the end specified as #{@raw[-12..-9].unpack1('L')}. ptr: #{ptr}"
     end
 
     # Set unit and name
@@ -1612,17 +1730,59 @@ end
 # Spectrum in memcached
 # Inheritance from Array doesn't seem possible anymore
 class SpectCache
-  attr_accessor :hosts, :name
-  def initialize(name, data, cache = Memcached.new('localhost'), metadata = {})
-    @name = name
-    @hosts = cache.servers
-    # Determine datafield type. Save space and time on integers! Default to float.
-    # See if wv needs to be generated
+  attr_accessor :cache, :name, :meta, :wv, :data
 
-    cache.set "spect_" + name, data.pack("D*")
-    metadata[:type] = 'D'
-    cache.set "spect_meta" + name, metadata
+  def initialize(cache, name, options = {}) # optional data input determins init mode
+    @cache = cache
+    raise "Not a Memcached!" unless @cache.is_a? Memcached
+    @name = name
+    @meta = options[:meta]
+    @data = options[:data]
+    @wv = options[:wv]
+    if @data # Only case that warrants a write at init would be data-containing new()
+      puts "Data input at init, writing cache"
+      write_cache
+    end
+    self 
   end
+
+  def read_cache
+    @meta = JSON.parse(@cache.get("spect_meta_" + @name)).transform_keys {|k| k.to_sym}
+    if @meta[:wv_ref]
+      @wv = @cache.get("spect_wv_#{meta[:wv_ref]}").unpack("#{meta[:wv_type]}*")
+    else
+      @wv = @cache.get("spect_wv_#{@name}").unpack("#{meta[:wv_type]}*")
+    end
+    @data = @cache.get("spect_#{@name}").unpack("#{meta[:type]}*")
+    true
+  end
+
+  def write_cache
+    # Determine datafield type. Save space and time on integers! Default to double.
+    type = @meta[:type] ? @meta[:type] : 'D'
+    wvtype = @meta[:wv_type] ? @meta[:wv_type] : 'D'
+    @cache.set "spect_" + @name, @data.pack("#{type}*")
+    @cache.set "spect_meta_" + @name, @meta.to_json
+
+    # See if wv needs to be set
+    # Assume wavelength type to always be double
+    if @meta[:wv_ref] == nil
+      @cache.set "spect_wv_"+ @name, wv.pack("#{wvtype}*")
+    end
+    true
+  end
+
+  def to_spectrum
+    read_cache
+    spect = Spectrum.new
+    spect.meta = @meta
+    spect.wv = @wv if @wv.size > 0
+    spect.signal = @data
+    spect.cache_host = @cache
+
+    spect
+  end
+
 end
 
 # Sparse methods below
