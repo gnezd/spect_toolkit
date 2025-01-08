@@ -12,8 +12,7 @@ require 'memcached'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :p_width, :p_height, :p_depth,
-                :loaded, :spe, :s_scan, :bin_to_spect, :aspect_ratio
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :p_width, :p_height, :p_depth, :loaded, :spe, :s_scan, :bin_to_spect, :aspect_ratio
 
   def initialize(path, name, dim, options = nil)
     @path = path
@@ -224,7 +223,7 @@ class Scan < Array
       y = points[0][1] + t * diff[1]
       z = points[0][2] + t * diff[2]
       spect = self[x][y][z]
-      spect.name = "#{@name}-#{x}-#{y}-#{z}"
+      spect.meta[:name] = "#{@name}-#{x}-#{y}-#{z}"
       result.push spect
     end
     result
@@ -614,7 +613,7 @@ class Spectrum
       result[i] = [x, y]
     end
     result.units = @units
-    result.name = @name + "-ma#{radius}"
+    result.meta[:name] = @meta[:name] + "-ma#{radius}"
     result.update_info
     result
   end
@@ -629,7 +628,7 @@ class Spectrum
 
   def peak_loosen(loosen)
     loosened = Spectrum.new
-    loosened.name = name + '-l#{loosen}'
+    loosened.meta[:name] = name + '-l#{loosen}'
     # start loosening with radius #{loosen}
     i = 0
     while i < size - 1
@@ -651,7 +650,7 @@ class Spectrum
 
     result = Spectrum.new
     (1..size - 2).each do |i|
-      result.push self[i] if self[i][1] > self[i + 1][1] && self[i][1] > self[i - 1][1]
+      result.push self[i] if self[i][1] >= self[i + 1][1] && self[i][1] >= self[i - 1][1]
     end
 
     result = result.peak_loosen(loosen) if loosen
@@ -663,7 +662,7 @@ class Spectrum
 
     result = Spectrum.new
     (1..size - 2).each do |i|
-      result.push self[i] if self[i][1] < self[i + 1][1] && self[i][1] < self[i - 1][1]
+      result.push self[i] if self[i][1] <= self[i + 1][1] && self[i][1] <= self[i - 1][1]
     end
 
     result = result.peak_loosen(loosen) if loosen
@@ -680,7 +679,7 @@ class Spectrum
     update_info
 
     result = Spectrum.new
-    result.name = @name + '-resampled'
+    result.meta[:name] = @meta[:name] + '-resampled'
     result.desc += "/#{sample.size} points"
     result.units = @units
 
@@ -736,7 +735,7 @@ class Spectrum
     result = Spectrum.new
     if other.is_a? Numeric
       each { |pt| result.push([pt[0], pt[1].to_f / other.to_f]) }
-      result.name = @name + "d#{other}"
+      result.meta[:name] = @meta[:name] + "d#{other}"
       result.units = @units
       result.update_info
     elsif other.is_a? Spectrum
@@ -744,7 +743,7 @@ class Spectrum
       resampled[0].each_index do |i|
         result[i] = [resampled[0][i][0], resampled[0][i][1] / resampled[1][i][1]]
       end
-      result.name = @name + '-' + other.name
+      result.meta[:name] = @meta[:name] + '-' + other.meta[:name]
       result.units = @units
       result.units[1] = 'a.u.'
     else
@@ -761,7 +760,7 @@ class Spectrum
   end
 
   def +(other)
-    old_name = @name # preserve name, not to be changed by resample()
+    old_name = @meta[:name] # preserve name, not to be changed by resample()
     sample = map { |pt| pt[0] }.union(other.map { |pt| pt[0] })
     self_resampled = resample(sample)
     input_resmpled = other.resample(sample)
@@ -770,7 +769,7 @@ class Spectrum
     self_resampled.each_index do |i|
       self_resampled[i][1] += input_resmpled[i][1]
     end
-    self_resampled.name = old_name # preserve name, not to be changed by resample()
+    self_resampled.meta[:name] = old_name # preserve name, not to be changed by resample()
     self_resampled.update_info
     self_resampled
   end
@@ -784,7 +783,7 @@ class Spectrum
     self_resampled.each_index do |i|
       self_resampled[i][1] -= input_resmpled[i][1]
     end
-    self_resampled.name = @name # preserve name, not to be changed by resample()
+    self_resampled.meta[:name] = @meta[:name] # preserve name, not to be changed by resample()
     self_resampled.update_info
     self_resampled
   end
@@ -807,7 +806,7 @@ class Spectrum
     # Cut off the (bg-zero)s at head and tail
     result.shift
     result.pop
-    result.name = name + '-minmax'
+    result.meta[:name] = name + '-minmax'
     result
   end
 
@@ -841,16 +840,16 @@ class Spectrum
   end
 
   def from_to(from, to=nil)
-    sum = 0.0
+    result = Spectrum.new
     if from.is_a?(Array) && from.size == 2 && to==nil
       sorted = from.sort
     else
       sorted = [from, to].sort
     end
     each do |pt|
-      sum += pt[1] if (pt[0] > sorted[0]) && (pt[0] < sorted[1])
+      result.push pt if (pt[0] > sorted[0]) && (pt[0] < sorted[1])
     end
-    sum
+    result
   end
 
   def max
@@ -871,7 +870,7 @@ class Spectrum
 
   def normalize!
     update_info
-    @name += '-normalized'
+    @meta[:name] += '-normalized'
     each do |pt|
       pt[1] = (pt[1] - @signal_range[0]).to_f / (@signal_range[1] - @signal_range[0])
     end
@@ -880,7 +879,7 @@ class Spectrum
   def normalize
     update_info
     result = Spectrum.new
-    result.name = @name + '-normalized'
+    result.meta[:name] = @meta[:name] + '-normalized'
     each_with_index do |pt, i|
       result[i] = [pt[0], (pt[1] - @signal_range[0]).to_f / (@signal_range[1] - @signal_range[0])]
     end
@@ -1214,7 +1213,7 @@ class Spe < Array
           xi += 1
         end
       end
-      result.name = "#{@name}-#{frame}-roi#{roin}"
+      result.meta[:name] = "#{@name}-#{frame}-roi#{roin}"
 
       result.units = @spectrum_units
       result.update_info
@@ -1587,7 +1586,7 @@ class SIF < Array
           xi += 1
         end
       end
-      result.name = "#{@name}-#{frame}-roi#{roin}"
+      result.meta[:name] = "#{@name}-#{frame}-roi#{roin}"
       result.units = @spectrum_units
       result.update_info
       result
@@ -1805,7 +1804,7 @@ def plot_spectra(spectra, options = {})
   # Prepare plots
   plots = []
   spectra.each_with_index do |spectrum, i|
-    spectrum.write_tsv(outdir + '/' + spectrum.name + '.tsv')
+    spectrum.write_tsv(outdir + '/' + spectrum.meta[:name] + '.tsv')
     linestyle = "lt #{i + 1}"
     linestyle = options[:linestyle][i] if options[:linestyle]
     # Ugly fix
@@ -1845,12 +1844,12 @@ def plot_spectra(spectra, options = {})
 
     # tkcanvas doesn't support enhanced text just yet
     title = if options[:plot_term] == 'tkcanvas-rb'
-              spectrum.name
+              spectrum.meta[:name]
             # plots.push "'#{outdir}/#{spectrum.name}.tsv' u ($1):($2) with lines #{linestyle} t '#{spectrum.name}'"
             else
-              spectrum.name.gsub('_', '\_')
+              spectrum.meta[:name].gsub('_', '\_')
             end
-    plots.push "'#{outdir}/#{spectrum.name}.tsv' u #{coord_ref} with lines #{linestyle} t '#{title}'"
+    plots.push "'#{outdir}/#{spectrum.meta[:name]}.tsv' u #{coord_ref} with lines #{linestyle} t '#{title}'"
   end
   plots += options[:plotline_inject] if options[:plotline_inject]
   plotline = 'plot ' + plots.join(", \\\n")
