@@ -79,4 +79,15 @@ class TestSpectrum < Minitest::Test
 
   end
 
+  def test_resample
+    sp1 = Spectrum.new
+    sp1.wv = [1,2,3,4]
+    sp1.signal = [1, 2, 2, 1]
+    sp2 = Spectrum.new
+    sp2.wv = [0.5, 2, 2.5, 5]
+    sp2.signal = [1, 1, 1, 1]
+
+    sp3 = sp1.resample(wv1.wv.union(wv2.wv))
+  end
+
 end

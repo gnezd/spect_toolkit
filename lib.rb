@@ -967,6 +967,17 @@ class Spectrum
     result
   end
 
+  # Substract dark count from baseline segment(s)
+  def dark_segments(segments)
+    segments = [segments] if !segments[0].is_a? Array
+    dark_segments = segments.map{|sg| self.from_to(*sg)}
+    sums = dark_segments.map{|dark_segment| dark_segment.sum}
+    sizes = dark_segments.map{|dark_segment| dark_segment.size}
+    dark_count = sums.sum / sizes.sum
+    @signal.map! {|x| x -= dark_count}
+    dark_count
+  end
+
   # IO related methods
   def read_delimited(path)
     fin = File.open path, 'r'
