@@ -600,6 +600,7 @@ class Spectrum
     raise 'Radius larger than half the length of spectrum' if 2 * radius >= size
 
     result = Spectrum.new
+    result.meta = @meta
     (0..size - 2 * radius - 1).each do |i|
       # Note that the index i of the moving average spectrum aligns with i + radius in original spectrum
       x = self[i + radius][0]
@@ -612,7 +613,7 @@ class Spectrum
       y /= (2 * radius + 1) # Normalization
       result[i] = [x, y]
     end
-    result.units = @units
+    result.meta[:units] = @meta[:units]
     result.meta[:name] = @meta[:name] + "-ma#{radius}"
     result.update_info
     result
@@ -628,7 +629,8 @@ class Spectrum
 
   def peak_loosen(loosen)
     loosened = Spectrum.new
-    loosened.meta[:name] = name + '-l#{loosen}'
+    loosened.meta[:name] = @meta
+    loosened.meta[:name] = name + "l-#{loosen}"
     # start loosening with radius #{loosen}
     i = 0
     while i < size - 1
@@ -642,6 +644,7 @@ class Spectrum
         loosened.push self[i] if i == size - 1
       end
     end
+    loosened.update_info
     loosened
   end
 
@@ -654,6 +657,7 @@ class Spectrum
     end
 
     result = result.peak_loosen(loosen) if loosen
+    result.update_info
     result
   end
 
@@ -666,11 +670,12 @@ class Spectrum
     end
 
     result = result.peak_loosen(loosen) if loosen
+    result.update_info
     result
   end
 
   # Resample spectrum at given locations
-  def resample(sample_in)
+  def resample(sample_in, extrapolate = false)
     raise 'Not a sampling 1D array' unless sample_in.is_a? Array
     raise 'Expecting 1D array to be passed in' unless sample_in.all? Numeric
 
@@ -680,34 +685,42 @@ class Spectrum
 
     result = Spectrum.new
     result.meta[:name] = @meta[:name] + '-resampled'
-    result.desc += "/#{sample.size} points"
-    result.units = @units
+    result.meta[:desc] += "/#{sample.size} points"
+    result.meta[:units] = @meta[:units]
 
     # Frequency value could be increasing or depending on unit
     # Bare with the ternary for x_polarity will be used later
     x_polarity = self[-1][0] - self[0][0] > 0 ? 1 : -1
-    sample.reverse! if x_polarity == -1
+    @wv.reverse! if x_polarity == -1
+    @signal.reverse! if x_polarity == -1
 
-    i = 0
+    i = 0 # Pointer to self
     while (sampling_point = sample.shift)
-      # Ugly catch for out of range points, throw out zero
-      if sampling_point < spectral_range[0] || sampling_point > spectral_range[1]
-        result.push [sampling_point, 0.0]
-        next
-      end
+      if sampling_point <= @wv.last && sampling_point >= @wv.first # In interpolation range
+        # self[i][0] need to surpass sampling point to bracket it. Careful of rounding error
+        i += 1 while (i < size - 1) && ((sampling_point - @wv[i]) > 0)
 
-      # self[i][0] need to surpass sampling point to bracket it. Careful of rounding error
-      i += 1 while (i < size - 1) && ((sampling_point - self[i][0]) * x_polarity > 0.000001)
-
-      # Could be unnecessarily costly, but I can think of no better way at the moment
-      if i == 0
-        interpolation = self[0][1]
-      else
-        interpolation = self[i - 1][1] + (self[i][1] - self[i - 1][1]) * (sampling_point - self[i - 1][0]) / (self[i][0] - self[i - 1][0])
+        # Could be unnecessarily costly, but I can think of no better way at the moment
+        if i == 0
+          interpolation = @signal[0]
+        else
+          interpolation = @signal[i - 1] + (@signal[i] - @signal[i - 1]) * (sampling_point - @wv[i - 1]) / (@wv[i] - @wv[i - 1])
+        end
+        result.push [sampling_point, interpolation]
+      elsif extrapolate && @wv.size > 1
+        # Extrapolate
+        if sampling_point < @wv[0] # Left side
+          extrapolation = @signal[0] + (@signal[0]-@signal[1])/(@wv[0]-@wv[1])*(sampling_point-@wv[0])
+        else # right side
+          extrapolation = @signal[-1] + (@signal[-1]-@signal[-2])/(@wv[-1]-@wv[-2])*(sampling_point-@wv[-1])
+        end
+        result.push [sampling_point, extrapolation]
       end
-      result.push [sampling_point, interpolation]
     end
 
+    # Restore order
+    @wv.reverse! if x_polarity == -1
+    @signal.reverse! if x_polarity == -1
     result.update_info
 
     # sample array is sorted right so the right sequence will follow ^.<
@@ -734,9 +747,10 @@ class Spectrum
   def /(other)
     result = Spectrum.new
     if other.is_a? Numeric
-      each { |pt| result.push([pt[0], pt[1].to_f / other.to_f]) }
+      result.signal = self.signal.map{|x| x/other}
+      result.wv = self.wv
       result.meta[:name] = @meta[:name] + "d#{other}"
-      result.units = @units
+      result.units = [@meta[:units][0], 'a.u.']
       result.update_info
     elsif other.is_a? Spectrum
       resampled = align_with(other)
@@ -744,7 +758,7 @@ class Spectrum
         result[i] = [resampled[0][i][0], resampled[0][i][1] / resampled[1][i][1]]
       end
       result.meta[:name] = @meta[:name] + '-' + other.meta[:name]
-      result.units = @units
+      result.units = @meta[:units]
       result.units[1] = 'a.u.'
     else
       raise "Deviding by sth strange! #{other.class} is not defined as a denominator."
@@ -753,7 +767,7 @@ class Spectrum
   end
 
   def align_with(input)
-    sample = map { |pt| pt[0] }.union(input.map { |pt| pt[0] })
+    sample = @wv.union input.wv
     self_resampled = resample(sample)
     input_resmpled = input.resample(sample)
     [self_resampled, input_resmpled]
@@ -770,22 +784,33 @@ class Spectrum
       self_resampled[i][1] += input_resmpled[i][1]
     end
     self_resampled.meta[:name] = old_name # preserve name, not to be changed by resample()
+    self_resampled.meta[:units] = @meta[:units]
     self_resampled.update_info
     self_resampled
   end
 
   def -(other)
-    sample = map { |pt| pt[0] }.union(other.map { |pt| pt[0] })
-    self_resampled = resample(sample)
-    input_resmpled = other.resample(sample)
-    raise 'bang' unless self_resampled.size == input_resmpled.size
+    if other.is_a? Spectrum
+      sample = map { |pt| pt[0] }.union(other.map { |pt| pt[0] })
+      self_resampled = resample(sample)
+      input_resmpled = other.resample(sample)
+      raise 'bang' unless self_resampled.size == input_resmpled.size
 
-    self_resampled.each_index do |i|
-      self_resampled[i][1] -= input_resmpled[i][1]
+      self_resampled.each_index do |i|
+        self_resampled[i][1] -= input_resmpled[i][1]
+      end
+      self_resampled.meta[:name] = @meta[:name] # preserve name, not to be changed by resample()
+      self_resampled.update_info
+      self_resampled
+    elsif other.is_a? Numeric
+      result = Spectrum.new
+      result.name = @meta[:name]
+      result.wv = @wv
+      result.signal = @signal.map {|x| x - other}
+      result
+    else
+      raise "Spectrum can only do arithmetics with Spectrum or Numberic"
     end
-    self_resampled.meta[:name] = @meta[:name] # preserve name, not to be changed by resample()
-    self_resampled.update_info
-    self_resampled
   end
 
   def uniform_resample(n)
@@ -871,6 +896,7 @@ class Spectrum
   def normalize!
     update_info
     @meta[:name] += '-normalized'
+    @signal_range = signal_range
     each do |pt|
       pt[1] = (pt[1] - @signal_range[0]).to_f / (@signal_range[1] - @signal_range[0])
     end
@@ -878,8 +904,10 @@ class Spectrum
 
   def normalize
     update_info
+    @signal_range = signal_range
     result = Spectrum.new
     result.meta[:name] = @meta[:name] + '-normalized'
+    result.meta[:units] = @meta[:units]
     each_with_index do |pt, i|
       result[i] = [pt[0], (pt[1] - @signal_range[0]).to_f / (@signal_range[1] - @signal_range[0])]
     end
