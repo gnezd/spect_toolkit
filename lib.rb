@@ -12,7 +12,7 @@ require 'memcached'
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
-  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :p_width, :p_height, :p_depth, :loaded, :spe, :s_scan, :bin_to_spect, :aspect_ratio
+  attr_accessor :frames, :wv, :spectrum_units, :path, :name, :width, :height, :depth, :p_width, :p_height, :p_depth, :loaded, :spe, :s_scan, :bin_to_spect, :aspect_ratio, :map_data
 
   def initialize(path, name, dim, options = nil)
     @path = path
@@ -52,6 +52,8 @@ class Scan < Array
       load_csv options
     when /\.[sS][pP][eE]/
       load_spe options
+    when /\.[sS][iI][fF]/
+      load_sif options
     else
       raise "File extension of #{@path} not recognizable."
     end
@@ -165,6 +167,49 @@ class Scan < Array
       i += 1
     end
     @spectrum_units = @spe.spectrum_units
+    puts "Scan building complete at #{Time.now}." if debug
+  end
+
+  def load_sif(options)
+    # File read
+    debug = options[:debug]
+    # BIN to spectrum here
+    options[:bin_to_spect] = true unless options[:bin_to_spect]
+
+    puts "loading sif #{@path} with options #{options}."
+    puts "Reading sif at #{Time.now}" if debug
+
+    @sif = SIF.new @path, @name, options
+    puts "Sif reading complete at #{Time.now}. Start scan building." if debug
+
+    # Scan building
+    i = 0
+    while i < @width
+      puts "i=#{i}" if debug
+      j = 0
+      while j < @height
+        relabel_i = if j.odd? && @s_scan == true
+                      # puts "Loading with S-shape scan"
+                      @width - i - 1
+                    else
+                      i
+                    end
+        k = 0
+        while k < @depth
+          self[relabel_i][j][k] = (0..@sif.rois.size - 1).map do |roin|
+            @sif.at(k * (@width * @height) + j * @width + i, roin)
+          end
+          self[relabel_i][j][k].each_with_index do |roi, n|
+            roi.name = "#{@name}-#{i}-#{j}-#{k}-#{n}"
+            roi.update_info
+          end
+          k += 1
+        end
+        j += 1
+      end
+      i += 1
+    end
+    @spectrum_units = @sif.spectrum_units
     puts "Scan building complete at #{Time.now}." if debug
   end
 
@@ -1612,7 +1657,7 @@ class SIF < Array
             unpacked = @raw[@data_offset + (frame * @framesize + roishift + yi * @rois[roin][:data_width] + xi) * 4..@data_offset + (frame * @framesize + roishift + yi * @rois[roin][:data_width] + xi) * 4 + 3].unpack1('F')
             raise "frame #{frame} #{xi} #{yi}" unless unpacked
 
-            result[xi][1] += unpacked
+            result.signal[xi] += unpacked
             yi += 1
           end
           xi += 1

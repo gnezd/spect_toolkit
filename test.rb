@@ -87,7 +87,18 @@ class TestSpectrum < Minitest::Test
     sp2.wv = [0.5, 2, 2.5, 5]
     sp2.signal = [1, 1, 1, 1]
 
-    sp3 = sp1.resample(wv1.wv.union(wv2.wv))
+    sp3 = sp1.resample(sp1.wv.union(sp2.wv), true)
+    assert_equal sp3.wv.sort, [0.5, 1,2, 2.5, 3, 4, 5]
+    assert_equal sp3.signal, [0.5, 1, 2, 2, 2, 1, 0].reverse
   end
 
+  def test_sif_map
+    sif1 = SIF.new 'testdata/Andor/mapping/3-4-3.sif', 'sif1', {bin_to_spect: true}
+    scan1 = Scan.new 'testdata/Andor/mapping/3-4-3.sif', 'sifscan', nil, {param_json: 'testdata/Andor/mapping/Scan_param-test-3-4-3-105505.json'}
+    scan1.load
+    scan1.plot_map('scratch/sifmap', {scale: 10}) {|x| x[0].sum}
+    # 顧頭顧尾
+    assert_equal sif1.at(0,0).sum, scan1.map_data[0][0][0]
+    assert_equal sif1.at(sif1.frames-1,0).sum, scan1.map_data[-1][-1][-1]
+  end
 end
