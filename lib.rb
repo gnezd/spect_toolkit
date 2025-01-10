@@ -1284,7 +1284,7 @@ class Spe < Array
               raise "frame #{frame} #{xi} #{yi}"
             end
 
-            result[xi][1] += @bin_data[(frame * @framesize + roishift + yi * @rois[roin][:data_width] + xi) * 2..(frame * @framesize + roishift + yi * @rois[roin][:data_width] + xi) * 2 + 1].unpack1('S')
+            result.signal[xi] += @bin_data[(frame * @framesize + roishift + yi * @rois[roin][:data_width] + xi) * 2..(frame * @framesize + roishift + yi * @rois[roin][:data_width] + xi) * 2 + 1].unpack1('S')
             yi += 1
           end
           xi += 1
