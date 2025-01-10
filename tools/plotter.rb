@@ -442,7 +442,7 @@ class MappingPlotter
       end
     when :mouserdown
       @spect_selection[1] = coord
-      @mapping_func.insert('end', "\nspects[0].from_to(#{@spect_selection[0][0]},#{@spect_selection[1][0]})")
+      @mapping_func.insert('end', "\nspects[0].from_to(#{@spect_selection[0][0]},#{@spect_selection[1][0]}).sum")
       @spect_ranging = false
     when :ranging
       @spect_selection[1] = coord

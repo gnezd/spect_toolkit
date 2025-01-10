@@ -8,7 +8,7 @@ require 'time'
 # require 'parallel'
 require 'json'
 require 'fileutils'
-require 'memcached'
+require 'memcached' if Gem.find_files('memcached') != []
 
 class Scan < Array
   # Assume all wavelength scales allign across all pixels
