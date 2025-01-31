@@ -1056,7 +1056,7 @@ class Spectrum
       if @cache_host
         host = @cache_host 
       else
-        host = Memcached.new('localhost')
+        host = Memcached::Client.new('localhost')
       end
     end
 
@@ -1817,7 +1817,7 @@ class SpectCache
 
   def initialize(cache, name, options = {}) # optional data input determins init mode
     @cache = cache
-    raise "Not a Memcached!" unless @cache.is_a? Memcached
+    raise "Not a Memcached client!" unless @cache.is_a? Memcached::Client
     @name = name
     @meta = options[:meta]
     @data = options[:data]
