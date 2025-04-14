@@ -1677,6 +1677,16 @@ class SIF < Array
     end
   end
 
+  # Return array of spectra from each frame
+  def spects
+    result = (0..frames-1).map {|frame| (0..rois.size-1).map {|roin| at(frame, roin)}}
+    if rois.size == 1
+      return result.flatten
+    else
+      return result
+    end
+  end
+
   def inspect; end
 
   def each_frame; end

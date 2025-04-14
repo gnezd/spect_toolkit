@@ -19,13 +19,13 @@ def adpl_proc(adpls, ranges, path)
     end
 
     # Construct data rows for plotting and write to datafile
-    data = (0..adpls[ith].spects.frames-1).map {|angle| [angle, adpls[ith].spects.at(angle, 0).from_to(*range), adpls[ith].spects.at(angle, 1).from_to(*range)]}
+    data = (0..adpls[ith].spects.frames-1).map {|angle| [angle, adpls[ith].spects.at(angle, 0).from_to(*range), adpls[ith].spects.at(angle, 1).from_to(*range).sum]}
     matrix_write(data.transpose, "#{path}#{adpls[ith].name}.tsv")
 
     # Construct gnuplot instructions
     gpout = File.open("#{path}#{adpls[ith].name}.gplot", 'w')
-    gpout.puts 'set terminal svg'
-    gpout.puts "set output '#{path}#{adpls[ith].name}.svg'"
+    gpout.puts 'set terminal png'
+    gpout.puts "set output '#{path}#{adpls[ith].name}.png'"
     gpout.puts "set title '#{path}#{adpls[ith].name.gsub('_', '\_')}'"
     
     # Note the ROI numberings being arbitrary
