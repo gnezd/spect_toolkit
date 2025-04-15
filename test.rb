@@ -89,7 +89,7 @@ class TestSpectrum < Minitest::Test
 
     sp3 = sp1.resample(sp1.wv.union(sp2.wv), true)
     assert_equal sp3.wv.sort, [0.5, 1,2, 2.5, 3, 4, 5]
-    assert_equal sp3.signal, [0.5, 1, 2, 2, 2, 1, 0].reverse
+    assert_equal sp3.signal, [0.5, 1, 2, 2, 2, 1, 0]
   end
 
   def test_sif_map
@@ -101,4 +101,18 @@ class TestSpectrum < Minitest::Test
     assert_equal sif1.at(0,0).sum, scan1.map_data[0][0][0]
     assert_equal sif1.at(sif1.frames-1,0).sum, scan1.map_data[-1][-1][-1]
   end
+
+  def test_add
+    spectrum1 = Spectrum.new
+    spectrum2 = Spectrum.new
+
+    spectrum1.push [1.0, 1.0]
+    spectrum1.push [2.0, 2.0]
+    spectrum2.push [1.0, 2.0]
+    spectrum2.push [2.0, 3.0]
+    spectrum3 = spectrum1 + spectrum2
+    puts spectrum3.signal
+    assert_equal [1.0, 3.0], spectrum3[0]
+  end
+
 end

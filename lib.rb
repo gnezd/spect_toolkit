@@ -634,7 +634,7 @@ class Spectrum
 
   def update_info
     sort!
-    reverse! unless @meta[:units][0] == 'nm' || @meta[:units][0] == 'px'
+    reverse! if @meta[:units][0] == 'wavenumber'
   end
 
   # Data processing methods
@@ -735,7 +735,7 @@ class Spectrum
 
     # Frequency value could be increasing or depending on unit
     # Bare with the ternary for x_polarity will be used later
-    x_polarity = self[-1][0] - self[0][0] > 0 ? 1 : -1
+    x_polarity = @wv[-1] - @wv[0] > 0 ? 1 : -1
     @wv.reverse! if x_polarity == -1
     @signal.reverse! if x_polarity == -1
 
@@ -826,7 +826,7 @@ class Spectrum
     raise 'bang' unless self_resampled.size == input_resmpled.size
 
     self_resampled.each_index do |i|
-      self_resampled[i][1] += input_resmpled[i][1]
+      self_resampled.signal[i] += input_resmpled.signal[i]
     end
     self_resampled.meta[:name] = old_name # preserve name, not to be changed by resample()
     self_resampled.meta[:units] = @meta[:units]
@@ -842,7 +842,7 @@ class Spectrum
       raise 'bang' unless self_resampled.size == input_resmpled.size
 
       self_resampled.each_index do |i|
-        self_resampled[i][1] -= input_resmpled[i][1]
+        self_resampled.signal[i] -= input_resmpled.signal[i]
       end
       self_resampled.meta[:name] = @meta[:name] # preserve name, not to be changed by resample()
       self_resampled.update_info
@@ -1333,7 +1333,7 @@ class SIF < Array
     @bin_to_spect = options[:bin_to_spect]
     @raw = File.open(@path, 'rb') { |f| f.read.freeze }
 
-    puts "Finished reading spe at #{Time.now.strftime('%H:%M:%S.%3N')}" if debug
+    puts "Finished reading spe #{@path} at #{Time.now.strftime('%H:%M:%S.%3N')}" if debug
     puts "Raw data has a lenght of: #{@raw.size}" if debug
 
     ptr = 0
