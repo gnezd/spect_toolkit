@@ -783,7 +783,8 @@ class Spectrum
     # Scalar product
     elsif other.is_a? Numeric
       result = Spectrum.new
-      each { |pt| result.push([pt[0], pt[1].to_f * other]) }
+      result.wv = @wv
+      signal.signal = @signal.map {|pt| pt * other}
       result.update_info
       result
     end
@@ -792,8 +793,8 @@ class Spectrum
   def /(other)
     result = Spectrum.new
     if other.is_a? Numeric
-      result.signal = self.signal.map{|x| x/other}
-      result.wv = self.wv
+      result.signal = @signal.map{|x| x/other}
+      result.wv = @wv
       result.meta[:name] = @meta[:name] + "d#{other}"
       result.units = [@meta[:units][0], 'a.u.']
       result.update_info
@@ -836,13 +837,17 @@ class Spectrum
 
   def -(other)
     if other.is_a? Spectrum
-      sample = map { |pt| pt[0] }.union(other.map { |pt| pt[0] })
+      sample = @wv.union(other.wv)
       self_resampled = resample(sample)
-      input_resmpled = other.resample(sample)
-      raise 'bang' unless self_resampled.size == input_resmpled.size
+      input_resampled = other.resample(sample)
+      begin
+      puts "bang self resampled size #{self_resampled.size} and other resampled size #{input_resampled.size}" unless self_resampled.size == input_resampled.size
+      rescue
+        binding.pry
+      end
 
       self_resampled.each_index do |i|
-        self_resampled.signal[i] -= input_resmpled.signal[i]
+        self_resampled.signal[i] -= input_resampled.signal[i]
       end
       self_resampled.meta[:name] = @meta[:name] # preserve name, not to be changed by resample()
       self_resampled.update_info
@@ -1349,7 +1354,7 @@ class SIF < Array
 
     delim = @raw[ptr..-1].index(' ')
     @sif_ver = @raw[ptr..ptr + delim - 1].to_i
-    puts "SIF version #{@sif_ver}" if debug
+    puts "SIF version #{@sif_ver} at ptr=#{ptr}" if debug
     ptr += (delim + 1)
 
     raise "Expecting '0 0 1 ' but got '#{@raw[ptr..ptr + 5]}'" unless @raw[ptr..ptr + 5] == '0 0 1 '
@@ -1357,6 +1362,7 @@ class SIF < Array
     ptr += 6
 
     match = @raw[ptr..-1].match(/^(\d+)\s(\S+)\s/) # Lazy delimination w/o checking for float string fmt
+    puts "done extracting time and temp at ptr=#{ptr}" if debug
     raise 'Problem extracting exposure time and temp' unless match
 
     @data_creation = match[1].to_i
@@ -1389,7 +1395,7 @@ class SIF < Array
     ptr += match[0].size
 
     # 16 more mysterous entries
-    puts '16 mysterious entries' if debug
+    puts "16 mysterious entries at #{ptr}" if debug
     16.times do
       match = @raw[ptr..-1].match(/^(\S+)\s/)
       ptr += match[0].size
@@ -1472,6 +1478,7 @@ class SIF < Array
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
     @calibration = match[1]
     ptr += match[0].size
+    puts "Calibration found. Now ptr = #{ptr}" if debug
 
     # Calibration lies within here? Yes
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
@@ -1482,7 +1489,7 @@ class SIF < Array
 
     # And a mysterious line of '0 1 0 0'
     match = @raw[ptr..-1].match(/[^\n]+\n/)
-    puts "#{ptr}: #{match}" if debug
+    puts "#{ptr}: #{match} mysterious 0 1 0 0" if debug
     ptr += match[0].size
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
@@ -1493,20 +1500,24 @@ class SIF < Array
       match = @raw[ptr..-1].match(/[^\n]+\n/)
       ptr += match[0].size
     end
+    puts "After Raman line extraction, Skip four lines to #{ptr}" if debug
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
+    puts "#{ptr}: #{match}" if debug
     str_l = match[1].to_i
     ptr += match[0].size
     @frame_axis = @raw[ptr..ptr + str_l - 1]
     ptr += str_l
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
+    puts "#{ptr}: #{match}" if debug
     str_l = match[1].to_i
     ptr += match[0].size
     @data_type = @raw[ptr..ptr + str_l - 1]
     ptr += str_l
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
+    puts "#{ptr}: #{match}" if debug
     str_l = match[1].to_i
     ptr += match[0].size
     @image_axis = @raw[ptr..ptr + str_l - 1]
@@ -1522,6 +1533,7 @@ class SIF < Array
     match = @raw[ptr..-1].match(/(\S+)\s(\S+)\s(\S+)\s(\S+)\s/) # \s matches \n !!!
     @frames, roi_n, @total_l, @image_l = match[1..4].map { |i| i.to_i } # Guess that roi_n == no_subimages
     ptr += match[0].size
+    puts "Got frame and roi info after #{ptr}. frames: #{@frames}, number of rois: #{roi_n}, total length #{@total_l}, image length: #{@image_l}" if debug
 
     @wv = []
 
@@ -1547,38 +1559,40 @@ class SIF < Array
       # Calibration polynomial
       @wv += ((x0..x1).map { |x| (0..3).map { |pwr| @calib[pwr] * (x**pwr) }.reduce(:+) })
     end
-    puts 'ROI construction done' if debug
+    puts "ROI construction done. ptr = #{ptr}" if debug
 
     # Trim spaces
-    # match = @raw[ptr..-1].match /\s+/
-    # ptr += match[0].size
+    #match = @raw[ptr..-1].match /[^\n]+\n/
+    #ptr += match[0].size
 
     @timestamps = []
     no_of_zero = 0
     (0..@frames - 1).each do |frame|
-      match = @raw[ptr..-1].match(/^\s?(\S+)\n/)
+      match = @raw[ptr..-1].match(/^\s*(\S+)\n/)
       ptr += match[0].size
+      puts "ptr progressing #{match[0].size} at #{ptr}. match[1] is '#{match[1]}' from #{@raw[ptr-1-match[0].size..ptr-1]}" if debug
       if match[1].to_f == 0.0
         puts "#{match[0]} deemed to be 0.0 at #{ptr}" if debug
-        if no_of_zero > 0
-          puts "Second timestamp 0.0. Impossible. Must be the end at #{ptr}" if debug
-          break
-        end
+        #if no_of_zero > 0
+        #  puts "Second timestamp 0.0. Impossible. Must be the end at #{ptr}" if debug
+        #  break
+        #end
         no_of_zero += 1
       end
       @timestamps[frame] = match[1].to_f
-      puts "Timestame #{@timestamps[frame]} at #{ptr}" if debug
+      puts "Timestamp of frame #{frame} is #{@timestamps[frame]} and found at #{ptr}" if debug
     end
 
     if @sif_ver == 65_567 # && @raw[ptr..ptr+1] == "1\n"
       # A weird array may occur
       # (0..@rois.size-1).each do |i|
       ptr += 2 if @raw[ptr..ptr + 1] == "0\n"
-      puts 'Arraycorrection' if debug
-      @frames.times do
-        match = @raw[ptr..-1].match(/\s+\d+\n/)
-        ptr += match[0].size
-      end
+      puts 'No Arraycorrection' if debug
+      #@frames.times do
+      #  match = @raw[ptr..-1].match(/\s+\d+\n/)
+      #  puts "Doing array correction at #{ptr}, adding match[0] size of #{match[0].size}"
+      #  ptr += match[0].size
+      #end
       puts "Came to #{ptr}" if debug
       # end
     end
@@ -1949,11 +1963,13 @@ def plot_spectra(spectra, options = {})
   plotline = 'plot ' + plots.join(", \\\n")
 
   # Terminal dependent preparations
+  options[:plot_width] = 800 unless options[:plot_width].is_a? Numeric
+  options[:plot_height] = 600 unless options[:plot_height].is_a? Numeric
   case options&.[](:plot_term)
   when nil, 'svg' # Means not indicated or svg
     plot_output = "#{outdir}/spect-plot.svg"
     gplot_terminal = <<~GP_TERM
-      set terminal svg size 800,600 mouse enhanced standalone
+      set terminal svg size #{options[:plot_width]},#{options[:plot_height]} enhanced mouse standalone
       set output '#{plot_output}'
     GP_TERM
   when 'png'
