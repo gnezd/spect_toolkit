@@ -19,6 +19,7 @@ sif_files.each do |file|
 end
 
 # Plot from array
-plot_spectra spects, {out_dir: 'summary'}
+output_path = (ARGV.size > 1) ? (ARGV[1]) : ('sumamry' + Time.now.strftime('%Y%b%d-%H%M%S'))
+plot_spectra spects, {out_dir: output_path}
 
 binding.pry
