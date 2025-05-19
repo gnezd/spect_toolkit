@@ -1325,17 +1325,21 @@ end
 
 # Andor .sif format
 class SIF < Array
-  attr_accessor :path, :name, :sif_ver, :frames, :frame_width, :frame_height, :framesize, :wv, :spectrum_units,
-                :data_creation, :file_creation, :file_modified, :grating, :center_wavelength, :exposure_time, :cycle_time, :accumulated_cycle_time, :accumulated_cycles, :temperature, :rois, :bin_to_spect, :timestamps, :calib
+  attr_accessor :path, :name, :wv, :raw, :meta, :xml
 
   def initialize(path, name, options = {})
     debug = options[:debug]
     @path = path
     @name = name
-    @spectrum_units = %w[px counts]
+    @wv = [] # This is a direct attr_accessor
+
+    # meta hash manages
+    # 
+    @meta = {}
+    @meta[:spectrum_units] = %w[px counts]
     raise "No such file #{@path}" unless File.exist? path
 
-    @bin_to_spect = options[:bin_to_spect]
+    @meta[:bin_to_spect] = options[:bin_to_spect]
     @raw = File.open(@path, 'rb') { |f| f.read.freeze }
 
     puts "Finished reading spe #{@path} at #{Time.now.strftime('%H:%M:%S.%3N')}" if debug
@@ -1353,8 +1357,8 @@ class SIF < Array
     ptr += (linel + 1)
 
     delim = @raw[ptr..-1].index(' ')
-    @sif_ver = @raw[ptr..ptr + delim - 1].to_i
-    puts "SIF version #{@sif_ver} at ptr=#{ptr}" if debug
+    @meta[:sif_ver] = @raw[ptr..ptr + delim - 1].to_i
+    puts "SIF version #{@meta[:sif_ver]} at ptr=#{ptr}" if debug
     ptr += (delim + 1)
 
     raise "Expecting '0 0 1 ' but got '#{@raw[ptr..ptr + 5]}'" unless @raw[ptr..ptr + 5] == '0 0 1 '
@@ -1362,189 +1366,205 @@ class SIF < Array
     ptr += 6
 
     match = @raw[ptr..-1].match(/^(\d+)\s(\S+)\s/) # Lazy delimination w/o checking for float string fmt
-    puts "done extracting time and temp at ptr=#{ptr}" if debug
     raise 'Problem extracting exposure time and temp' unless match
 
-    @data_creation = match[1].to_i
-    @temperature = match[2].to_f
+    @meta[:data_creation] = match[1].to_i
+    @meta[:temperature] = match[2].to_f
     ptr += match[0].size
+    puts "done extracting time(#{Time.at(@meta[:data_creation])}) and temp(#{@meta[:temperature]}) at ptr=#{ptr}" if debug
 
     match = @raw[ptr..-1].match(/^(\S+)\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s/)
     raise "Expecting zero at #{ptr}" unless match[6] == '0'
-
     ptr += match[0].size
+    puts "6 entries read and arrived #{ptr}" if debug
 
     match = @raw[ptr..-1].match(/^(\S+)\s(\S+)\s(\S+)\s(\S+)\s/)
-    @exposure_time = match[1].to_f
-    @cycle_time = match[2].to_f
-    @accumulated_cycle_time = match[3].to_f
-    @accumulated_cycles = match[4].to_i
+    @meta[:exposure_time] = match[1].to_f
+    @meta[:cycle_time] = match[2].to_f
+    @meta[:accumulated_cycle_time] = match[3].to_f
+    @meta[:accumulated_cycles] = match[4].to_i
     ptr += match[0].size
+    puts "4 timing entries and arrived at #{ptr}" if debug
 
-    match = @raw[ptr..-1].match(/^\0\s(\S+)\s(\S+)\s\S+\s\S+\s/)
-    @stack_cycle_time = match[1]
-    @pixel_readout_time = match[2]
+    match = @raw[ptr..-1].match(/^\0\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s/)
+    # These were not in the original attr_accessor list for meta, keeping as internal ivars
+    @meta[:stack_cycle_time] = match[1]
+    @meta[:pixel_readout_time] = match[2]
     ptr += match[0].size
+    puts "4 more entries (stack_cycle_time, pixel_readout_time, ?, ?) and arrived #{ptr}" if debug
 
-    match = @raw[ptr..-1].match(/^(\S+)\s\S+\s\S+\s/)
-    @dac_gain = match[1]
+    match = @raw[ptr..-1].match(/^(\S+)\s(\S+)\s(\S+)\s/)
+    @meta[:dac_gain] = match[1]
     ptr += match[0].size
+    puts "3 more entries (dac_gain, ?, ?) and at #{ptr}" if debug
+
 
     match = @raw[ptr..-1].match(/^(\S+)\s/)
-    @gate_width = match[1]
+    @meta[:gate_width] = match[1] 
     ptr += match[0].size
 
-    # 16 more mysterous entries
-    puts "16 mysterious entries at #{ptr}" if debug
-    16.times do
-      match = @raw[ptr..-1].match(/^(\S+)\s/)
-      ptr += match[0].size
-    end
 
+    # 52 entries spaced by whitespace
     match = @raw[ptr..-1].match(/^(\S+)[^\n]+\n/)
-    @grating_blaze = match[1].to_f
+    @meta[:mysterious_entries_52] = match[0].split(' ')
+    @meta[:cam_serial] = @meta[:mysterious_entries_52][19]
+    @meta[:current_temp] = @meta[:mysterious_entries_52][22]
     ptr += match[0].size
+    puts "End of 52 entries before detector info: #{ptr}" if debug
 
     match = @raw[ptr..-1].match(/^(\S+)\s\n\s(\S+)\s(\S+)\s(\S+)\n/)
-    @detector_name = match[1]
-    @detector_dimension = match[2..3].map { |i| i.to_i }
+    @meta[:detector_name] = match[1]
+    @meta[:detector_dimension] = match[2..3].map { |i| i.to_i }
     orig_filename_length = match[4].to_i
     ptr += match[0].size
+    puts "End of detector name, dimension, and length of orig filename: #{ptr}" if debug
 
-    @original_path = @raw[ptr..ptr + orig_filename_length - 1]
+    @meta[:original_path] = @raw[ptr..ptr + orig_filename_length - 1]
     ptr += orig_filename_length
+    puts "End of orig filename: #{ptr}" if debug
 
     match = @raw[ptr..-1].match(/\s\n65538\s([^\n]+)\n/)
     user_text_l = match[1].to_i
     ptr += match[0].size
-    @user_text = @raw[ptr..ptr + user_text_l - 1]
+    puts "Extracting user_text at #{ptr}, with user_text length of #{user_text_l}"
+    # user_text is too mysterious for now and disturbing to see
+    # @meta[:user_text] = @raw[ptr..ptr + user_text_l - 1]
     ptr += user_text_l
     match = @raw[ptr..-1].match(/\n/)
     raise "Trouble at #{ptr}" unless match
+    ptr += 1 # \n
 
-    ptr += 1
-    ptr += 13 # 65538 and 8 bits
+    ptr += 5 # 65538 and 8 bytes
 
-    match = @raw[ptr..-1].match(/^\s(\S+)\s([^\n\s]+)\n/)
-    @shutter_times = match[1..2]
+    # line for shutter times
+    match = @raw[ptr..-1].match(/([^\n]+)\n65540/)
+    @meta[:shutter_times] = match[1].split(" ")
     ptr += match[0].size
 
+    # Spectrograph secret
+    @meta[:spectrograph_secret] = []
     # Skip lines with respect to various SIF version
-    if @sif_ver >= 65_548 && @sif_ver <= 65_557
+    if @meta[:sif_ver] > 65_565 # Default case 65567)
+      17.times do
+        match = @raw[ptr..-1].match(/[^\n]+\n/)
+        @meta[:spectrograph_secret].push match[0]
+        ptr += match[0].size
+      end
+      # match = @raw[ptr..-1].match(/([^\n]+)\n/)
+      @meta[:spectrograph] = @meta[:spectrograph_secret][3].chomp.split(" ")[1]
+      items = @meta[:spectrograph_secret][0].chomp.split(" ")
+      @meta[:center_wavelength] = items[2].to_f
+      @meta[:grating_lines] = items[5].to_i
+      @meta[:grazing] = items[6]
+      #9.times do
+      #  match = @raw[ptr..-1].match(/[^\n]+\n/)
+      #  @meta[:spectrograph_secret].push match[0]
+      #  ptr += match[0].size
+      #end
+    elsif @meta[:sif_ver] >= 65_548 && @meta[:sif_ver] <= 65_557
       match = @raw[ptr..-1].match(/[^\n]+\n[^\n]+\n/)
       ptr += match[0].size
-    elsif @sif_ver == 65_558
+    elsif @meta[:sif_ver] == 65_558
       5.times do
         match = @raw[ptr..-1].match(/[^\n]+\n/)
         ptr += match[0].size
       end
-    elsif @sif_ver == 65_559 || @sif_ver == 65_564
+    elsif @meta[:sif_ver] == 65_559 || @meta[:sif_ver] == 65_564
       8.times do
         match = @raw[ptr..-1].match(/[^\n]+\n/)
         ptr += match[0].size
       end
-    elsif @sif_ver == 65_565
+    elsif @meta[:sif_ver] == 65_565
       15.times do
         match = @raw[ptr..-1].match(/[^\n]+\n/)
         ptr += match[0].size
       end
-    elsif @sif_ver > 65_565
-      8.times do
-        match = @raw[ptr..-1].match(/[^\n]+\n/)
-        ptr += match[0].size
-      end
-      match = @raw[ptr..-1].match(/([^\n]+)\n/)
-      @spectrograph = match[1] # Check content
-      9.times do
-        match = @raw[ptr..-1].match(/[^\n]+\n/)
-        ptr += match[0].size
-      end
     end
-
-    @spectrograph = 'sif version not checked' unless defined? @spectrograph
+    puts "ptr at #{ptr} after spectrograph secret" if debug
 
     match = @raw[ptr..-1].match(/^(\S+)\s/)
-    @sif_calb_ver = match[1].to_i
+    @meta[:sif_calib_ver] = match[1].to_i # Internal
     ptr += match[0].size
-    if @sif_calb_ver == 65_540
+    if @meta[:sif_calib_ver] == 65_540
       match = @raw[ptr..-1].match(/[^\n+]\n/)
-      @calb_line = match[1]
+      @meta[:calib_line] = match[1] # Internal
       ptr += match[0].size
+    else
+      raise "I dunno how I calib!"
     end
     puts "#{ptr} after suspected spectrograph" if debug
 
-    raise 'We do not use Mechelle spectrometers, dropping support' if @spectrograph.match(/Mechelle/)
+    raise 'We do not use Mechelle spectrometers, dropping support' if @meta[:spectrograph].match(/Mechelle/)
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
-    @calibration = match[1]
+    
+    @meta[:calibration_string_info] = match[1]
     ptr += match[0].size
     puts "Calibration found. Now ptr = #{ptr}" if debug
 
-    # Calibration lies within here? Yes
+    # Calibration lies within here
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
-    @calib = match[1].split(' ').map { |s| s.to_f } # Calibration comes in polynomial coeffs, raising power
-    @spectrum_units = %w[nm counts] unless @calib == [0.0, 1.0, 0.0, 0.0]
-    puts "calib: #{@calib.join ', '}" if debug
+    @meta[:calib] = match[1].split(' ').map { |s| s.to_f } # Calibration comes in polynomial coeffs, raising power
+    @meta[:spectrum_units] = %w[nm counts] unless @meta[:calib] == [0.0, 1.0, 0.0, 0.0]
+    puts "calib: #{@meta[:calib].join ', '}" if debug
     ptr += match[0].size
 
-    # And a mysterious line of '0 1 0 0'
-    match = @raw[ptr..-1].match(/[^\n]+\n/)
-    puts "#{ptr}: #{match} mysterious 0 1 0 0" if debug
+    # And two mysterious lines of 0 1 0 0
+    match = @raw[ptr..-1].match(/[^\n]+\n[^\n]+\n/)
+    puts "#{ptr}: #{match} mysterious two lines of 0 1 0 0" if debug
     ptr += match[0].size
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
-    @raman = match[1]
+    @meta[:raman_line] = match[1]
+    @meta[:after_raman_3line] = []
     ptr += match[0].size
-
-    4.times do
+    3.times do
       match = @raw[ptr..-1].match(/[^\n]+\n/)
+      @meta[:after_raman_3line].push match[0]
       ptr += match[0].size
     end
-    puts "After Raman line extraction, Skip four lines to #{ptr}" if debug
+    puts "After Raman line extraction, and three unknown lines to #{ptr}" if debug
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
     puts "#{ptr}: #{match}" if debug
     str_l = match[1].to_i
     ptr += match[0].size
-    @frame_axis = @raw[ptr..ptr + str_l - 1]
+    @meta[:frame_axis] = @raw[ptr..ptr + str_l - 1] # Should determine units from here
     ptr += str_l
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
     puts "#{ptr}: #{match}" if debug
     str_l = match[1].to_i
     ptr += match[0].size
-    @data_type = @raw[ptr..ptr + str_l - 1]
+    @meta[:data_type] = @raw[ptr..ptr + str_l - 1]
     ptr += str_l
 
     match = @raw[ptr..-1].match(/([^\n]+)\n/)
     puts "#{ptr}: #{match}" if debug
     str_l = match[1].to_i
     ptr += match[0].size
-    @image_axis = @raw[ptr..ptr + str_l - 1]
+    @meta[:image_axis] = @raw[ptr..ptr + str_l - 1]
     ptr += str_l
 
     match = @raw[ptr..-1].match(/\S+\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s/)
-
-    # Note that pixels start with the 1st in Andor notation
-    @xrange = [match[1], match[3]].map { |i| i.to_i }
-    @yrange = [match[4], match[2]].map { |i| i.to_i }
+    @meta[:xrange] = [match[1], match[3]].map { |i| i.to_i }
+    @meta[:yrange] = [match[4], match[2]].map { |i| i.to_i }
     ptr += match[0].size
 
     match = @raw[ptr..-1].match(/(\S+)\s(\S+)\s(\S+)\s(\S+)\s/) # \s matches \n !!!
-    @frames, roi_n, @total_l, @image_l = match[1..4].map { |i| i.to_i } # Guess that roi_n == no_subimages
+    # @total_l, @image_l are internal
+    @meta[:frames], roi_n, @total_l, @image_l = match[1..4].map { |i| i.to_i } # Guess that roi_n == no_subimages
     ptr += match[0].size
-    puts "Got frame and roi info after #{ptr}. frames: #{@frames}, number of rois: #{roi_n}, total length #{@total_l}, image length: #{@image_l}" if debug
+    puts "Got frame and roi info after #{ptr}. frames: #{@meta[:frames]}, number of rois: #{roi_n}, total length #{@total_l}, image length: #{@image_l}" if debug
 
-    @wv = []
-
-    # Construct @rois
-    @rois = Array.new(roi_n)
+    # Construct rois
+    @meta[:rois] = Array.new(roi_n)
     (0..roi_n - 1).each do |roii|
       match = @raw[ptr..-1].match(/\S+\s(\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (\S+)\n/)
       x0, y1, x1, y0, ybin, xbin = match[1..6].map { |i| i.to_i }
       ptr += match[0].size
       puts "ROI #{roii} ends at #{ptr}: " if debug
-      @rois[roii] = {
+      @meta[:rois][roii] = {
         id: roii,
         x: x0 - 1,
         y: y0 - 1,
@@ -1555,58 +1575,43 @@ class SIF < Array
         data_width: (x1 - x0 + 1) / xbin,
         data_height: (y1 - y0 + 1) / ybin
       }
-      puts @rois[roii] if debug
+      puts "#{roii}th roi: #{@meta[:rois][roii]}" if debug
       # Calibration polynomial
-      @wv += ((x0..x1).map { |x| (0..3).map { |pwr| @calib[pwr] * (x**pwr) }.reduce(:+) })
+      @wv += ((x0..x1).map { |x| (0..3).map { |pwr| @meta[:calib][pwr] * (x**pwr) }.reduce(:+) })
     end
     puts "ROI construction done. ptr = #{ptr}" if debug
 
-    # Trim spaces
-    #match = @raw[ptr..-1].match /[^\n]+\n/
-    #ptr += match[0].size
-
-    @timestamps = []
+    @meta[:timestamps] = []
     no_of_zero = 0
-    (0..@frames - 1).each do |frame|
+    (0..@meta[:frames] - 1).each do |frame|
       match = @raw[ptr..-1].match(/^\s*(\S+)\n/)
       ptr += match[0].size
       puts "ptr progressing #{match[0].size} at #{ptr}. match[1] is '#{match[1]}' from #{@raw[ptr-1-match[0].size..ptr-1]}" if debug
       if match[1].to_f == 0.0
         puts "#{match[0]} deemed to be 0.0 at #{ptr}" if debug
-        #if no_of_zero > 0
-        #  puts "Second timestamp 0.0. Impossible. Must be the end at #{ptr}" if debug
-        #  break
-        #end
         no_of_zero += 1
       end
-      @timestamps[frame] = match[1].to_f
-      puts "Timestamp of frame #{frame} is #{@timestamps[frame]} and found at #{ptr}" if debug
+      @meta[:timestamps][frame] = match[1].to_f
+      puts "Timestamp of frame #{frame} is #{@meta[:timestamps][frame]} and found at #{ptr}" if debug
     end
 
-    if @sif_ver == 65_567 # && @raw[ptr..ptr+1] == "1\n"
-      # A weird array may occur
-      # (0..@rois.size-1).each do |i|
+    if @meta[:sif_ver] == 65_567
       ptr += 2 if @raw[ptr..ptr + 1] == "0\n"
       puts 'No Arraycorrection' if debug
-      #@frames.times do
-      #  match = @raw[ptr..-1].match(/\s+\d+\n/)
-      #  puts "Doing array correction at #{ptr}, adding match[0] size of #{match[0].size}"
-      #  ptr += match[0].size
-      #end
       puts "Came to #{ptr}" if debug
-      # end
     end
     ptr += 2 if @raw[ptr..ptr + 1] == "0\n"
-    @data_offset = ptr
+    @data_offset = ptr # Internal
     puts "Raw data offset: #{@data_offset}" if debug
-    @framesize = @rois.map { |roi| roi[:data_width] * roi[:data_height] }.sum
-    ptr += @frames * @framesize * 4
+    @meta[:framesize] = @meta[:rois].map { |roi| roi[:data_width] * roi[:data_height] }.sum
+    ptr += @meta[:frames] * @meta[:framesize] * 4
 
-    # Four lines of 0 lead to xml
+    @meta[:final_lines] = []
     4.times do
       match = @raw[ptr..-1].match(/[^\n]+\n/)
       ptr += match[0].size
-      puts "Blank line eaten. ptr: #{ptr}" if debug
+      @meta[:final_lines].push match[0]
+      puts "4 lines eaten. ptr: #{ptr}" if debug
     end
 
     xml_raw = @raw[ptr..-13]
@@ -1614,21 +1619,22 @@ class SIF < Array
       puts "xml size mismatch: should be #{xml_raw.size} but at the end specified as #{@raw[-12..-9].unpack1('L')}. ptr: #{ptr}"
     end
 
-    # Set unit and name
+    # Set unit and name based on options
     case options[:spectral_unit]
     when 'wavenumber'
-      @wv = @wv.map { |nm| 10_000_000.0 / nm } # wavanumber
-      @spectrum_units = %w[wavenumber counts]
+      @wv = @wv.map { |nm| 10_000_000.0 / nm } # wavenumber
+      @meta[:spectrum_units] = %w[wavenumber counts]
     when 'eV'
-      @wv = @wv.map { |nm| 1239.84197 / nm } # wavanumber
-      @spectrum_units = %w[eV counts]
-    else
-      # nm
-      @spectrum_units = %w[nm counts]
+      @wv = @wv.map { |nm| 1239.84197 / nm } # eV
+      @meta[:spectrum_units] = %w[eV counts]
+    else # default 'nm'
+      @meta[:spectrum_units] = %w[nm counts] # Could already be this, but explicit
     end
 
     @xml = Nokogiri.XML(xml_raw)
+
   end
+
 
   def at(frame, roin)
     raise 'Roi and frame # must be specified' if frame.nil? || roin.nil?
@@ -1701,7 +1707,9 @@ class SIF < Array
     end
   end
 
-  def inspect; end
+  def inspect
+    "SIF file #{@path}, name: #{@name}\n#{@meta}"
+  end
 
   def each_frame; end
 end
