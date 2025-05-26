@@ -1376,6 +1376,7 @@ class SIF < Array
     match = @raw[ptr..-1].match(/^(\S+)\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s(\S+)\s/)
     raise "Expecting zero at #{ptr}" unless match[6] == '0'
     ptr += match[0].size
+    @meta[:aftertemp_6_fields] = match[0].split(" ")
     puts "6 entries read and arrived #{ptr}" if debug
 
     match = @raw[ptr..-1].match(/^(\S+)\s(\S+)\s(\S+)\s(\S+)\s/)
@@ -1640,12 +1641,12 @@ class SIF < Array
     raise 'Roi and frame # must be specified' if frame.nil? || roin.nil?
 
     # Unbinned ROI, output array
-    if @rois[roin][:data_height] > 1 && !@bin_to_spect
-      result = Array.new(@rois[roin][:data_height]) { Array.new(@rois[roin][:data_width]) { 0 } }
+    if @meta[:rois][roin][:data_height] > 1 && !@meta[:bin_to_spect]
+      result = Array.new(@meta[:rois][roin][:data_height]) { Array.new(@meta[:rois][roin][:data_width]) { 0 } }
       yi = 0
-      while yi < @rois[roin][:data_height]
+      while yi < @meta[:rois][roin][:data_height]
         result[yi] =
-          @raw[@data_offset + (frame * @framesize + yi * @rois[roin][:data_width]) * 4..@data_offset + (frame * @framesize + (yi + 1) * @rois[roin][:data_width]) * 4 + 1].unpack('F*')
+          @raw[@data_offset + (frame * @meta[:framesize] + yi * @meta[:rois][roin][:data_width]) * 4..@data_offset + (frame * @meta[:framesize] + (yi + 1) * @meta[:rois][roin][:data_width]) * 4 + 1].unpack('F*')
         yi += 1
       end
       result.transpose
@@ -1658,23 +1659,23 @@ class SIF < Array
 
       roii = 0
       while roii < roin
-        roishift += @rois[roii][:data_width] * @rois[roii][:data_height]
+        roishift += @meta[:rois][roii][:data_width] * @meta[:rois][roii][:data_height]
         roii += 1
       end
 
       # Binning needed
-      if @bin_to_spect
-        bin_range = if @bin_to_spect.is_a? Array
-                      @bin_to_spect
+      if @meta[:bin_to_spect]
+        bin_range = if @meta[:bin_to_spect].is_a? Array
+                      @meta[:bin_to_spect]
                     else
-                      [0, @rois[roin][:data_height]]
+                      [0, @meta[:rois][roin][:data_height]]
                     end
 
-        while xi < @rois[roin][:data_width]
+        while xi < @meta[:rois][roin][:data_width]
           result[xi] = [@wv[xi + roishift], 0]
           yi = bin_range[0]
           while yi < bin_range[1]
-            unpacked = @raw[@data_offset + (frame * @framesize + roishift + yi * @rois[roin][:data_width] + xi) * 4..@data_offset + (frame * @framesize + roishift + yi * @rois[roin][:data_width] + xi) * 4 + 3].unpack1('F')
+            unpacked = @raw[@data_offset + (frame * @meta[:framesize] + roishift + yi * @meta[:rois][roin][:data_width] + xi) * 4..@data_offset + (frame * @meta[:framesize] + roishift + yi * @meta[:rois][roin][:data_width] + xi) * 4 + 3].unpack1('F')
             raise "frame #{frame} #{xi} #{yi}" unless unpacked
 
             result.signal[xi] += unpacked
@@ -1684,14 +1685,14 @@ class SIF < Array
         end
       # No binning
       else
-        while xi < @rois[roin][:data_width]
+        while xi < @meta[:rois][roin][:data_width]
           result[xi] = [@wv[xi + roishift],
-                        @raw[@data_offset + (frame * @framesize + roishift + xi) * 4..@data_offset + (frame * @framesize + roishift + xi) * 4 + 3].unpack1('F')]
+                        @raw[@data_offset + (frame * @meta[:framesize] + roishift + xi) * 4..@data_offset + (frame * @meta[:framesize] + roishift + xi) * 4 + 3].unpack1('F')]
           xi += 1
         end
       end
       result.meta[:name] = "#{@name}-#{frame}-roi#{roin}"
-      result.units = @spectrum_units
+      result.units = @meta[:spectrum_units]
       result.update_info
       result
     end
