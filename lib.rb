@@ -41,7 +41,7 @@ class Scan < Array
     @loaded = false
     @spectral_width = 0
     super Array.new(width) { Array.new(height) { Array.new(depth) { Spectrum.new } } }
-    puts "#{name} to be loaded from #{path}"
+    puts "#{name} to be loaded from #{path}" if path
   end
 
   def load(options = {})
@@ -114,7 +114,7 @@ class Scan < Array
     each do |row|
       row.each do |column|
         column.each do |pixel|
-          pixel.units = @spectrum_units
+          pixel.meta[:units] = @meta[:spectrum_units]
           pixel.update_info
         end
       end
@@ -196,7 +196,7 @@ class Scan < Array
                     end
         k = 0
         while k < @depth
-          self[relabel_i][j][k] = (0..@sif.rois.size - 1).map do |roin|
+          self[relabel_i][j][k] = (0..@sif.meta[:rois].size - 1).map do |roin|
             @sif.at(k * (@width * @height) + j * @width + i, roin)
           end
           self[relabel_i][j][k].each_with_index do |roi, n|
@@ -209,7 +209,7 @@ class Scan < Array
       end
       i += 1
     end
-    @spectrum_units = @sif.spectrum_units
+    @spectrum_units = @sif.meta[:spectrum_units]
     puts "Scan building complete at #{Time.now}." if debug
   end
 
@@ -285,7 +285,7 @@ class Scan < Array
     while i < @width * @height * @depth
       x = i % @width
       y = ((i - x) / @width) % @height
-      z = i / (@width * height)
+      z = i / (@width * @height)
       begin
         @map_data[z][y][x] = mapping_function.yield(self[x][y][z], [x, y, z])
       rescue StandardError
@@ -342,7 +342,7 @@ class Scan < Array
       z = options[:z] if options[:z]
       plot_output = "#{outdir}/#{@name}.svg"
       gplot_terminal = <<~GP_TERM
-        set terminal svg size #{@p_width * scale * @depth},#{@p_height * scale} mouse enhanced standalone #{dark_bg ? 'background "black"' : ''}
+        set terminal svg size #{@width * scale * @depth},#{@height * scale} mouse enhanced standalone #{dark_bg ? 'background "black"' : ''}
         set output '#{plot_output}'
         set title '#{@name.gsub('_', '\_')}' #{dark_bg ? "tc 'white'" : ''}
         #{dark_bg ? "set border lc 'white'" : ''}
@@ -352,7 +352,7 @@ class Scan < Array
     when 'png'
       plot_output = "#{outdir}/#{@name}.png"
       gplot_terminal = <<~GP_TERM
-        set terminal png size #{@p_width * scale * @depth},#{@p_height * scale} #{dark_bg ? 'background "black"' : ''}
+        set terminal png size #{@width * scale * @depth},#{@height * scale} #{dark_bg ? 'background "black"' : ''}
         set output '#{plot_output}'
         set title '#{@name.gsub('_', '\_')}' #{dark_bg ? "tc 'white'" : ''}
         #{dark_bg ? "set border lc 'white'" : ''}
@@ -499,8 +499,16 @@ class Scan < Array
     binned = []
     bins.each do |bin|
       # bin.each {|pt| puts "pt[0] #{pt[0]} pt[1] #{pt[1]}"}
-      spect = (bin.map { |pt| self[pt[0]][pt[1]][z][roi] }).reduce(:+) / bin.size
-      spect.units = @spectrum_units
+      if self[0][0][0][0].is_a? Spectrum
+        units = self[0][0][0][0].meta[:units]
+        spect = (bin.map { |pt| self[pt[0]][pt[1]][z][roi] }).reduce(:+) / bin.size
+      elsif self[0][0][0].is_a? Spectrum
+        units = self[0][0][0].meta[:units]
+        spect = (bin.map { |pt| self[pt[0]][pt[1]][z] }).reduce(:+) / bin.size
+      else
+        raise "?? where is the Spectrum"
+      end
+      spect.meta[:units] = units
       binned.push spect
     end
 
@@ -758,8 +766,10 @@ class Spectrum
           extrapolation = @signal[0] + (@signal[0]-@signal[1])/(@wv[0]-@wv[1])*(sampling_point-@wv[0])
         else # right side
           extrapolation = @signal[-1] + (@signal[-1]-@signal[-2])/(@wv[-1]-@wv[-2])*(sampling_point-@wv[-1])
-        end
+        end # No 'extrapolation'
         result.push [sampling_point, extrapolation]
+      else
+        result.push [sampling_point, 0]
       end
     end
 
@@ -784,7 +794,7 @@ class Spectrum
     elsif other.is_a? Numeric
       result = Spectrum.new
       result.wv = @wv
-      signal.signal = @signal.map {|pt| pt * other}
+      result.signal = @signal.map {|pt| pt * other}
       result.update_info
       result
     end
@@ -796,7 +806,7 @@ class Spectrum
       result.signal = @signal.map{|x| x/other}
       result.wv = @wv
       result.meta[:name] = @meta[:name] + "d#{other}"
-      result.units = [@meta[:units][0], 'a.u.']
+      result.meta[:units] = [@meta[:units][0], 'a.u.']
       result.update_info
     elsif other.is_a? Spectrum
       resampled = align_with(other)
@@ -804,8 +814,8 @@ class Spectrum
         result[i] = [resampled[0][i][0], resampled[0][i][1] / resampled[1][i][1]]
       end
       result.meta[:name] = @meta[:name] + '-' + other.meta[:name]
-      result.units = @meta[:units]
-      result.units[1] = 'a.u.'
+      result.meta[:units] = @meta[:units]
+      result.meta[:units][1] = 'a.u.'
     else
       raise "Deviding by sth strange! #{other.class} is not defined as a denominator."
     end
@@ -821,10 +831,11 @@ class Spectrum
 
   def +(other)
     old_name = @meta[:name] # preserve name, not to be changed by resample()
-    sample = map { |pt| pt[0] }.union(other.map { |pt| pt[0] })
+    sample = @wv.union(other.wv)
     self_resampled = resample(sample)
     input_resmpled = other.resample(sample)
-    raise 'bang' unless self_resampled.size == input_resmpled.size
+    binding.pry unless self_resampled.size == input_resmpled.size
+    raise "bang, self.size = #{@wv.size}, foreign.size = #{other.wv.size}" unless self_resampled.size == input_resmpled.size
 
     self_resampled.each_index do |i|
       self_resampled.signal[i] += input_resmpled.signal[i]
@@ -924,6 +935,7 @@ class Spectrum
     each do |pt|
       result.push pt if (pt[0] > sorted[0]) && (pt[0] < sorted[1])
     end
+    result.meta[:units] = @meta[:units]
     result
   end
 
@@ -1304,7 +1316,7 @@ class Spe < Array
       end
       result.meta[:name] = "#{@name}-#{frame}-roi#{roin}"
 
-      result.units = @spectrum_units
+      result.meta[:units] = @spectrum_units
       result.update_info
       result
     end
@@ -1368,7 +1380,7 @@ class SIF < Array
     match = @raw[ptr..-1].match(/^(\d+)\s(\S+)\s/) # Lazy delimination w/o checking for float string fmt
     raise 'Problem extracting exposure time and temp' unless match
 
-    @meta[:data_creation] = match[1].to_i
+    @meta[:data_creation] = Time.at(match[1].to_i)
     @meta[:temperature] = match[2].to_f
     ptr += match[0].size
     puts "done extracting time(#{Time.at(@meta[:data_creation])}) and temp(#{@meta[:temperature]}) at ptr=#{ptr}" if debug
@@ -1427,7 +1439,7 @@ class SIF < Array
     match = @raw[ptr..-1].match(/\s\n65538\s([^\n]+)\n/)
     user_text_l = match[1].to_i
     ptr += match[0].size
-    puts "Extracting user_text at #{ptr}, with user_text length of #{user_text_l}"
+    puts "Extracting user_text at #{ptr}, with user_text length of #{user_text_l}" if debug
     # user_text is too mysterious for now and disturbing to see
     # @meta[:user_text] = @raw[ptr..ptr + user_text_l - 1]
     ptr += user_text_l
@@ -1692,7 +1704,7 @@ class SIF < Array
         end
       end
       result.meta[:name] = "#{@name}-#{frame}-roi#{roin}"
-      result.units = @meta[:spectrum_units]
+      result.meta[:units] = @meta[:spectrum_units]
       result.update_info
       result
     end
@@ -1700,8 +1712,8 @@ class SIF < Array
 
   # Return array of spectra from each frame
   def spects
-    result = (0..frames-1).map {|frame| (0..rois.size-1).map {|roin| at(frame, roin)}}
-    if rois.size == 1
+    result = (0..@meta[:frames]-1).map {|frame| (0..@meta[:rois].size-1).map {|roin| at(frame, roin)}}
+    if @meta[:rois].size == 1
       return result.flatten
     else
       return result
@@ -1709,7 +1721,16 @@ class SIF < Array
   end
 
   def inspect
-    "SIF file #{@path}, name: #{@name}\n#{@meta}"
+    keys_to_inspect = [:data_creation, :temperature, :current_temp, :exposure_time, :frames, :spectrograph, :detector_name, :center_wavelength]
+    "SIF file #{@path}, name: #{@name}.\n#{(keys_to_inspect.map {|k| "  #{k}: #{@meta[k]}"}).join("\n")}"
+  end
+
+  def to_s
+    inspect
+  end
+
+  def pretty_print
+    inspect
   end
 
   def each_frame; end
@@ -1736,10 +1757,10 @@ class ADPL
   # Plotting ADPL data, with given density of scan per degree
   def plot(output_path = nil, options = {})
     FileUtils.mkdir_p output_path unless Dir.exist? output_path
-    @spects.rois.each_with_index do |roi, roin|
-      data_export = Array.new(@spects.frames) { Array.new(@spects.rois[roin][:data_width]) { 0 } }
+    @spects.meta[:rois].each_with_index do |roi, roin|
+      data_export = Array.new(@spects.meta[:frames]) { Array.new(@spects.meta[:rois][roin][:data_width]) { 0 } }
       frame = 0
-      while frame < @spects.frames
+      while frame < @spects.meta[:frames]
         @spects.at(frame, roin).each_with_index do |pt, j|
           data_export[frame][j] = pt[1]
         end
@@ -1910,7 +1931,7 @@ def plot_spectra(spectra, options = {})
   raise 'Not an array of spectra input.' unless (spectra.is_a? Array) && (spectra.all? Spectrum)
 
   # Check if they align in x_units
-  x_units = spectra.map { |spectrum| spectrum.units[0] }
+  x_units = spectra.map { |spectrum| spectrum.meta[:units][0] }
   raise "Some spectra have different units: #{x_units}" unless x_units.all? { |unit| unit == x_units[0] }
 
   # Prepare output path
@@ -1934,7 +1955,7 @@ def plot_spectra(spectra, options = {})
     if options[:raman_line]
       raman_line_match = options[:raman_line].to_s.match(/^(\d+\.? \d*)\s?(nm|cm-1|wavenumber|eV)?$/)
       raman_line = raman_line_match[1].to_f
-      raman_line_match[2] = spectrum.units[0] unless raman_line_match[2]
+      raman_line_match[2] = spectrum.meta[:units][0] unless raman_line_match[2]
 
       # Unit conversion if necessary: All be nanometers
       case raman_line_match[2]
@@ -1948,7 +1969,7 @@ def plot_spectra(spectra, options = {})
         raise "spectral unit unexpected: #{raman_line_match[2]}"
       end
 
-      case spectrum.units[0] # What am I doing?? (08 Aug 2024)
+      case spectrum.meta[:units][0] # What am I doing?? (08 Aug 2024)
         # Oh no this needs cross conversion...
       when 'nm'
       when 'eV'
@@ -2022,7 +2043,7 @@ def plot_section(spectra, options = {})
   height = options['plot_height'] ? options['plot_height'].to_i : 600
 
   # Check if they align in x_units
-  x_units = spectra.map { |spectrum| spectrum.units[0] }
+  x_units = spectra.map { |spectrum| spectrum.meta[:units][0] }
   raise "Some spectra have different units: #{x_units}" unless x_units.all? { |unit| unit == x_units[0] }
 
   outdir = options[:out_dir] || 'section-' + Time.now.strftime('%d%b-%H%M%S')

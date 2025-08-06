@@ -6,7 +6,7 @@ def adpl_proc(adpls, ranges, path)
   puts "Processing..."
   adpls.each_index do |ith|
 
-    normal_fl = adpls[ith].spects.at(adpls[ith].spects.frames/2, 0)
+    normal_fl = adpls[ith].spects.at(adpls[ith].spects.meta[:frames]/2, 0)
     
     if ranges[ith] == nil
       # Default range: peak +/- 0.5fwhm
@@ -19,14 +19,14 @@ def adpl_proc(adpls, ranges, path)
     end
 
     # Construct data rows for plotting and write to datafile
-    data = (0..adpls[ith].spects.frames-1).map {|angle| [angle, adpls[ith].spects.at(angle, 0).from_to(*range), adpls[ith].spects.at(angle, 1).from_to(*range).sum]}
+    data = (0..adpls[ith].spects.meta[:frames]-1).map {|angle| [angle, adpls[ith].spects.at(angle, 0).from_to(*range).sum, adpls[ith].spects.at(angle, 1).from_to(*range).sum]}
     matrix_write(data.transpose, "#{path}#{adpls[ith].name}.tsv")
 
     # Construct gnuplot instructions
     gpout = File.open("#{path}#{adpls[ith].name}.gplot", 'w')
     gpout.puts 'set terminal png'
     gpout.puts "set output '#{path}#{adpls[ith].name}.png'"
-    gpout.puts "set title '#{path}#{adpls[ith].name.gsub('_', '\_')}'"
+    gpout.puts "set title '#{adpls[ith].name.gsub('_', '\_')}'"
     
     # Note the ROI numberings being arbitrary
     gpout.puts "plot '#{path}#{adpls[ith].name}.tsv' u 1:2 w lines t 'roi0', '' u 1:3 w lines t 'roi1'"
@@ -64,7 +64,9 @@ adpl_fs.each do |adplf|
   adpl.plot(path+File.basename(adplf, '.sif'), { plot_term: 'png' })
 
   # Extract and accumulate the center spectra
-  maxpl = adpl.spects.at(adpl.spects.frames/2,1)
+  maxpl = adpl.spects.at(adpl.spects.meta[:frames]/2,0)
+  maxpls.push maxpl
+  maxpl = adpl.spects.at(adpl.spects.meta[:frames]/2,1)
   maxpls.push maxpl
 
 end

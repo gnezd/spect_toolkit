@@ -294,6 +294,24 @@ class MappingPlotter
     @map.plot_to @map_canvas
   end
 
+  # Get instrumental background
+  def get_instr_bg(path)
+    old_instr_bg = @instr_bg
+    @instr_bg = File.open(path, 'r').read.chomp.split("\t").map{|x| x.to_f}
+    # Iteration
+    i = 0
+    while i < @scan.width * @scan.height * @scan.depth
+      x = i % @scan.width
+      y = ((i - x) / @scan.width) % @scan.height
+      z = i / (@scan.width * @scan.height)
+      @scan[x][y][z][0].signal.each_index do |i|
+        @scan[x][y][z][0].signal[i] = @scan[x][y][z][0].signal[i] + old_instr_bg[i] - @instr_bg[i]
+      end
+      i += 1
+    end
+    "OK!"
+  end
+
   # Plot spects
   # Invoke color style injection
   def update_spectra_plot
@@ -476,6 +494,9 @@ class MappingPlotter
     
     # Raman?
     @spect_style += "set xrange [#{@scan[0][0][0][0][0][0]}:#{@scan[0][0][0][0][-1][0]}]\n" if $spectral_unit == 'wavenumber'
+
+    # Initialize instrumental background
+    @instr_bg = Array.new(@scan[0][0][0][0].size) {0.0}
     remap
   end
 
