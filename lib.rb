@@ -2169,19 +2169,17 @@ end
 
 def gaussian(sample, pos, width, height)
   basis = Spectrum.new
+  basis.wv = sample
+  basis.signal = sample.map {|x| Math.exp(-(((x - pos) / width)**2)) * height}
   basis.name = "#{pos}-#{width}-#{height}"
-  sample.each do |x|
-    basis.push [x, Math.exp(-(((x - pos) / width)**2)) * height]
-  end
   basis
 end
 
 def lorentzian(sample, pos, width, height)
   basis = Spectrum.new
+  basis.wv = sample
+  basis.signal = sample.map {|x| height.to_f / (1 + (2.0 * (x - pos) / width)**2)}
   basis.name = "lorenzian-#{pos}-#{width}-#{height}"
-  sample.each do |x|
-    basis.push [x, height.to_f / (1 + (2.0 * (x - pos) / width)**2)]
-  end
   basis
 end
 
