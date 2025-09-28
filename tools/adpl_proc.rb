@@ -19,7 +19,11 @@ def adpl_proc(adpls, ranges, path)
     end
 
     # Construct data rows for plotting and write to datafile
-    data = (0..adpls[ith].spects.meta[:frames]-1).map {|angle| [angle, adpls[ith].spects.at(angle, 0).from_to(*range).sum, adpls[ith].spects.at(angle, 1).from_to(*range).sum]}
+    data = (0..adpls[ith].spects.meta[:frames]-1).map {|angle|
+      [angle] + (0..adpls[ith].spects.meta[:rois].size-1).map {|roin|    
+      adpls[ith].spects.at(angle, 0).from_to(*range).sum
+      }
+    }
     matrix_write(data.transpose, "#{path}#{adpls[ith].name}.tsv")
 
     # Construct gnuplot instructions
@@ -64,11 +68,10 @@ adpl_fs.each do |adplf|
   adpl.plot(path+File.basename(adplf, '.sif'), { plot_term: 'png' })
 
   # Extract and accumulate the center spectra
-  maxpl = adpl.spects.at(adpl.spects.meta[:frames]/2,0)
-  maxpls.push maxpl
-  maxpl = adpl.spects.at(adpl.spects.meta[:frames]/2,1)
-  maxpls.push maxpl
-
+  (0..adpl.spects.meta[:rois].size-1).each do |roi|
+    maxpl = adpl.spects.at(adpl.spects.meta[:frames]/2, roi)
+    maxpls.push maxpl
+  end
 end
 
 
