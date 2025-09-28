@@ -360,13 +360,13 @@ class MappingPlotter
       points = @scan.select_points(@selection_on_scan[0..1]+ [@z], @selection_on_scan[2..3]+ [@z])
       @spects += [(points.map {|pt| @scan[pt[0]][pt[1]][@z][@roi]}).reduce(:+)]
       @spects.last.name = "sum-#{@selection_on_scan.join('-')}"
-      @linestyle.push "lt #{@map_selections.size}"
+      @linestyle.push "lines lt #{@map_selections.size}"
       update_spectra_plot
     when 'px'
       points = @scan.select_points(@selection_on_scan[0..1]+ [@z], @selection_on_scan[2..3]+ [@z])
       newspects = points.map {|pt| @scan[pt[0]][pt[1]][@z][@roi]}
       @spects += newspects
-      @linestyle += ["lt #{@map_selections.size}"] * newspects.size
+      @linestyle += ["lines lt #{@map_selections.size}"] * newspects.size
       # Check: spectrum naming?
       update_spectra_plot
     when 'section'
@@ -374,7 +374,7 @@ class MappingPlotter
       newspects = points.map{|pt| @scan[pt[0]][pt[1]][@z][@roi]}
       newspects.each_index do |i|
         newspects[i].name = "section-#{@selection_on_scan.join('-')}-#{i}"
-        @linestyle += ["lt #{i}"]
+        @linestyle += ["lines lt #{i}"]
       end
       # Perform uniform t sampling to newspects here
       @spects = newspects

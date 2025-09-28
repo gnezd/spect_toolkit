@@ -44,6 +44,7 @@ class Scan < Array
     puts "#{name} to be loaded from #{path}" if path
   end
 
+  
   def load(options = {})
     options[:bin_to_spect] = @bin_to_spect
     puts options
@@ -682,19 +683,18 @@ class Spectrum
 
   def peak_loosen(loosen)
     loosened = Spectrum.new
-    loosened.meta[:name] = @meta
+    loosened.meta = @meta
     loosened.meta[:name] = name + "l-#{loosen}"
     # start loosening with radius #{loosen}
     i = 0
     while i < size - 1
-      if (self[i][0] - self[i + 1][0])**2 + (self[i][1] - self[i + 1][1])**2 > loosen**2
-        loosened.push self[i]
-        loosened.push self[i + 1] if i == size - 2
+      if ((@wv[i]-@wv[i+1])**2 + (@signal[i]-@signal[i+1])**2 > loosen**2) || (i == size - 2)
+        loosened.signal.push signal[i]
+        loosened.wv.push wv[i]
         i += 1
-      else
-        loser = self[i][1] - self[i + 1][1] >= 0 ? i : i + 1
-        delete_at loser
-        loosened.push self[i] if i == size - 1
+      elsif @signal[i] > @signal[i+1] || (i == size-1)
+        loosened.signal.push signal[i]
+        loosened.wv.push wv[i]
       end
     end
     loosened.update_info
@@ -705,8 +705,12 @@ class Spectrum
     raise 'Loosen neighborhood should be number of points' unless loosen.is_a? Integer or loosen.nil?
 
     result = Spectrum.new
+    result.meta[:units] = @meta[:units]
     (1..size - 2).each do |i|
-      result.push self[i] if self[i][1] >= self[i + 1][1] && self[i][1] >= self[i - 1][1]
+      if @signal[i] > @signal[i+1] && @signal[i] > @signal[i-1]
+        result.signal.push @signal[i]
+        result.wv.push @wv[i]
+      end
     end
 
     result = result.peak_loosen(loosen) if loosen
@@ -718,6 +722,7 @@ class Spectrum
     raise 'Loosen neighborhood should be number of points' unless loosen.is_a? Integer or loosen.nil?
 
     result = Spectrum.new
+    result.meta[:units] = @meta[:units]
     (1..size - 2).each do |i|
       result.push self[i] if self[i][1] <= self[i + 1][1] && self[i][1] <= self[i - 1][1]
     end
@@ -966,13 +971,13 @@ class Spectrum
 
   def normalize
     update_info
-    @signal_range = signal_range
     result = Spectrum.new
     result.meta[:name] = @meta[:name] + '-normalized'
     result.meta[:units] = @meta[:units]
-    each_with_index do |pt, i|
-      result[i] = [pt[0], (pt[1] - @signal_range[0]).to_f / (@signal_range[1] - @signal_range[0])]
-    end
+    result.wv = @wv
+    @signal_range = signal_range()
+    signal_span = @signal_range[1] - @signal_range[0]
+    result.signal = @signal.map{|x| (x - @signal_range[0]).to_f/signal_span}
     result.update_info
     result
   end
@@ -1943,8 +1948,8 @@ def plot_spectra(spectra, options = {})
   plots = []
   spectra.each_with_index do |spectrum, i|
     spectrum.write_tsv(outdir + '/' + spectrum.meta[:name] + '.tsv')
-    linestyle = "lt #{i + 1}"
-    linestyle = options[:linestyle][i] if options[:linestyle]
+    linestyle = "lines lt #{i + 1}"
+    linestyle = options[:linestyle][i] if options[:linestyle] && options[:linestyle][i]
     # Ugly fix
     # Should actually be filtering if enhanced is used
     # reversing raman plot here aswell
@@ -1953,16 +1958,18 @@ def plot_spectra(spectra, options = {})
     # Should this be done only once instead of to each spectrum?
     coord_ref = '($1):($2)'
     if options[:raman_line]
-      raman_line_match = options[:raman_line].to_s.match(/^(\d+\.? \d*)\s?(nm|cm-1|wavenumber|eV)?$/)
+      raman_line_match = options[:raman_line].to_s.match(/^(\d+\.?\d*)\s?(nm|cm-1|wavenumber|eV)?$/)
       raman_line = raman_line_match[1].to_f
-      raman_line_match[2] = spectrum.meta[:units][0] unless raman_line_match[2]
+
+      unit =  raman_line_match[2] ? raman_line_match[2] : spectrum.meta[:units][0]
+      puts "unit: #{unit}"
 
       # Unit conversion if necessary: All be nanometers
-      case raman_line_match[2]
+      case unit
       when 'nm'
         # Do nothing
       when 'wavenumber', 'cm-1'
-        raman_line = 0.01 / raman_line
+        raman_line = 0.01 / raman_line * 1E9
       when 'eV'
         raman_line = 1239.84197 / raman_line
       else
@@ -1974,10 +1981,14 @@ def plot_spectra(spectra, options = {})
       when 'nm'
       when 'eV'
       when 'wavenumber', 'cm-1'
-        raman_line = 0.01 / raman_line * 1E9
+        puts "Raman line: #{raman_line}"
         coord_ref = "(#{raman_line}-$1):($2)"
       end
 
+    end
+
+    if linestyle == 'labels'
+      coord_ref += ':($1)'
     end
 
     # tkcanvas doesn't support enhanced text just yet
@@ -1987,7 +1998,7 @@ def plot_spectra(spectra, options = {})
             else
               spectrum.meta[:name].gsub('_', '\_')
             end
-    plots.push "'#{outdir}/#{spectrum.meta[:name]}.tsv' u #{coord_ref} with lines #{linestyle} t '#{title}'"
+    plots.push "'#{outdir}/#{spectrum.meta[:name]}.tsv' u #{coord_ref} with #{linestyle} t '#{title}'"
   end
   plots += options[:plotline_inject] if options[:plotline_inject]
   plotline = 'plot ' + plots.join(", \\\n")
@@ -2073,7 +2084,7 @@ def plot_section(spectra, options = {})
     tics = []
     spectra[0].each_with_index do |pt, x|
       if x == 0 || x == spectra[0].size - 1 #
-      elsif (pt[0] / 1000).to_i != (spectra[0][x + 1][0] / 1000).to_i # Every 100 nm
+      elsif (pt[0] / 1000).to_i != (spectra[0][x + 1][0] / 1000).to_i # Every 1000 cm-1
         tics.push [((spectra[0][x + 1][0] / 1000).to_i * 1000).to_s, x]
       end
     end
@@ -2170,7 +2181,7 @@ end
 def gaussian(sample, pos, width, height)
   basis = Spectrum.new
   basis.wv = sample
-  basis.signal = sample.map {|x| Math.exp(-(((x - pos) / width)**2)) * height}
+  basis.signal = sample.map {|x| Math.exp(-(((x - pos).to_f / width)**2)) * height}
   basis.name = "#{pos}-#{width}-#{height}"
   basis
 end
