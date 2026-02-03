@@ -487,7 +487,8 @@ class MappingPlotter
       return
     end
 
-    @scan = Scan.new(@spe_path, File.basename(@spe_path, '.spe'), nil, {param_json: @json_path})
+    ext = '.'+@spe_path.split('.')[-1]
+    @scan = Scan.new(@spe_path, File.basename(@spe_path, ext), nil, {param_json: @json_path})
     @scan.load({spectral_unit: $spectral_unit.to_s})
     # Generate z selection radiobuttons in @z_selector here
     @z_selector.configure('values', (0..@scan.depth-1).map {|z| z.to_s})
@@ -515,14 +516,18 @@ class MappingPlotter
   end
 
   def save_map
-    Dir.mkdir('export') unless Dir.exist? 'export'
+    @export_path = File.dirname(@spe_path) + '/export/' + @scan.name
+    FileUtils.mkdir_p(@export_path) unless Dir.exist? @export_path
     map_func = @mapping_func.get('0.0', 'end')
-    @scan.plot_map("./export/#{@scan.name}-map", {plot_term: 'svg',z: @z, plot_style: @map_style, scale: 5, plot_height: 800, dry_run: true}) {|spects| eval(map_func) }
+    map_path = "#{@export_path}/#{@scan.name}-map-#{Time.now.strftime('%d%b-%H%M%S')}"
+    @scan.plot_map(map_path, {plot_term: 'svg',z: @z, plot_style: @map_style, scale: 5, plot_height: 800, dry_run: true}) {|spects| eval(map_func) }
+    File.open(map_path+'/map_func', 'w') {|f| f.puts(map_func)}
   end
 
   def save_spect
-    Dir.mkdir('export') unless Dir.exist? 'export'
-    plot_spectra(@spects, {out_dir: "./export/#{@scan.name}-spect", plot_term: 'svg', plot_style: @spect_style, linestyle: @linestyle, dry_run: true})
+    @export_path = File.dirname(@spe_path) + '/export/' + @scan.name
+    FileUtils.mkdir_p(@export_path) unless Dir.exist? @export_path
+    plot_spectra(@spects, {out_dir: "#{@export_path}/#{@scan.name}-spect-#{Time.now.strftime('%d%b-%H%M%S')}", plot_term: 'svg', plot_style: @spect_style, linestyle: @linestyle, dry_run: true})
   end
 end
 
