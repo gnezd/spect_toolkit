@@ -1,8 +1,11 @@
 require 'pty'
 require 'pry'
+require 'json'
 
 def send_data(data, proc_register)
-  proc_register[:w].write([data.size].pack("L")+data)
+  transfer = [data.size].pack("L")+data
+  puts "Transferring #{transfer.size} bytes"
+  proc_register[:w].write(transfer)
   2.times {puts proc_register[:r].gets}
   true
 end
@@ -17,10 +20,15 @@ procs_register = []
   _r.close
 end
 
-puts procs_register[0][:r].gets
+sif1 = SIF.new '../testdata/Andor/ADPL_test_20frames_2ROIs.sif', 'a'
+binding.pry
 
-data = "A" * 1E9
-puts "Ready to pump data at #{Time.now.strftime("%H:%M:%S.%9N")}"
-send_data(data, procs_register[0])
+puts procs_register[0][:r].gets
+data_schema = {type: "sif", size: 10}
+puts "Sending schema at #{Time.now.strftime("%H:%M:%S.%9N")}"
+send_data(data_schema.to_json, procs_register[0])
 puts "Done #{Time.now.strftime("%H:%M:%S.%9N")}"
+
+
+
 binding.pry

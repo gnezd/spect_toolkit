@@ -585,6 +585,14 @@ class SIF < Array
     end
   end
 
+  # Average over frames for given ROI
+  def avg(roi)
+    raise "ROI out of range" unless (roi >= 0) && (roi < @meta[:rois].size)
+    result = ((0..@meta[:frames]-1).map {|frame| self.at(frame, roi)}).reduce(:+) / @meta[:frames].to_f
+    result.name = @name + "-roi#{roi}-#{@meta[:frames]}avg"
+    result 
+  end
+
   def inspect
     keys_to_inspect = [:data_creation, :temperature, :current_temp, :exposure_time, :frames, :spectrograph, :detector_name, :center_wavelength]
     "SIF file #{@path}, name: #{@name}.\n#{(keys_to_inspect.map {|k| "  #{k}: #{@meta[k]}"}).join("\n")}"

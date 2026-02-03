@@ -272,20 +272,24 @@ class Spectrum
   end
 
   def *(other)
+    result = Spectrum.new
     # Inner product
     if other.is_a? Spectrum
       sample = map { |pt| pt[0] }.union(other.map { |pt| pt[0] })
       self_resmpled_v = GSL::Vector.alloc(resample(sample).map { |pt| pt[1] })
       input_resmpled_v = GSL::Vector.alloc(other.resample(sample).map { |pt| pt[1] })
-      self_resmpled_v * input_resmpled_v.col
+      result = self_resmpled_v * input_resmpled_v.col
+      result.meta[:units] = @meta[:units]
+      result.meta[:units][1] = 'a.u.'
     # Scalar product
     elsif other.is_a? Numeric
-      result = Spectrum.new
+      result.signal = @signal.map{|x| x * other}
       result.wv = @wv
-      result.signal = @signal.map {|pt| pt * other}
+      result.meta[:name] = @meta[:name] + "m"
+      result.meta[:units] = [@meta[:units][0], 'a.u.']
       result.update_info
-      result
     end
+    result
   end
 
   def /(other)
@@ -293,7 +297,7 @@ class Spectrum
     if other.is_a? Numeric
       result.signal = @signal.map{|x| x/other}
       result.wv = @wv
-      result.meta[:name] = @meta[:name] + "d#{other}"
+      result.meta[:name] = @meta[:name] + "d"
       result.meta[:units] = [@meta[:units][0], 'a.u.']
       result.update_info
     elsif other.is_a? Spectrum
@@ -301,7 +305,7 @@ class Spectrum
       resampled[0].each_index do |i|
         result[i] = [resampled[0][i][0], resampled[0][i][1] / resampled[1][i][1]]
       end
-      result.meta[:name] = @meta[:name] + '-' + other.meta[:name]
+      result.meta[:name] = @meta[:name] + 'd' + other.meta[:name]
       result.meta[:units] = @meta[:units]
       result.meta[:units][1] = 'a.u.'
     else
@@ -519,6 +523,7 @@ class Spectrum
 
   # Substract dark count from baseline segment(s)
   def dark_segments(segments)
+    raise "Expecting segments to be array or array of arrays" unless segments.is_a? Array
     segments = [segments] if !segments[0].is_a? Array
     dark_segments = segments.map{|sg| self.from_to(*sg)}
     sums = dark_segments.map{|dark_segment| dark_segment.sum}
