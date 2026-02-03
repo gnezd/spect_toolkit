@@ -24,6 +24,14 @@ class SpectCache
     else
       @wv = @cache.get("spect_wv_#{@name}").unpack("#{meta[:wv_type]}*")
     end
+
+    begin
+      time = Time.parse(@meta[:time])
+    rescue
+      time = nil
+    end
+    @meta[:time] = time
+
     @data = @cache.get("spect_#{@name}").unpack("#{meta[:type]}*")
     true
   end
