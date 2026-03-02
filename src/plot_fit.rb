@@ -381,11 +381,11 @@ def matrix_write(matrix, path, delim = "\t")
   matrix_out.close
 end
 
-def gaussian(sample, pos, width, height)
+def gaussian(sample, pos, stdev, height)
   basis = Spectrum.new
   basis.wv = sample
-  basis.signal = sample.map {|x| Math.exp(-(((x - pos).to_f / width)**2)) * height}
-  basis.name = "#{pos}-#{width}-#{height}"
+  basis.signal = sample.map {|x| Math.exp(-(((x - pos).to_f / stdev)**2)/2) * height}
+  basis.name = "#{pos}-#{stdev}-#{height}"
   basis
 end
 

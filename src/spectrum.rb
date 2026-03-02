@@ -321,20 +321,30 @@ class Spectrum
   end
 
   def +(other)
-    old_name = @meta[:name] # preserve name, not to be changed by resample()
-    sample = @wv.union(other.wv)
-    self_resampled = resample(sample)
-    input_resmpled = other.resample(sample)
-    binding.pry unless self_resampled.size == input_resmpled.size
-    raise "bang, self.size = #{@wv.size}, foreign.size = #{other.wv.size}" unless self_resampled.size == input_resmpled.size
+      old_name = @meta[:name] # preserve name, not to be changed by resample()
+    if other.is_a? Spectrum
+      sample = @wv.union(other.wv)
+      self_resampled = resample(sample)
+      input_resmpled = other.resample(sample)
 
-    self_resampled.each_index do |i|
-      self_resampled.signal[i] += input_resmpled.signal[i]
+      # Review the following catch lines later. Is it even remotely possible?
+      # binding.pry unless self_resampled.size == input_resmpled.size
+      raise "bang, self.size = #{@wv.size}, foreign.size = #{other.wv.size}" unless self_resampled.size == input_resmpled.size
+
+      self_resampled.each_index do |i|
+        self_resampled.signal[i] += input_resmpled.signal[i]
+      end
+
+    elsif other.is_a? Numeric
+      self_resampled = resample(@wv)
+      self_resampled.signal.map! {|x| x += other}
+    else
+      raise "Spectrum cann only be added a Spectrum or a number"
     end
-    self_resampled.meta[:name] = old_name # preserve name, not to be changed by resample()
-    self_resampled.meta[:units] = @meta[:units]
-    self_resampled.update_info
-    self_resampled
+      self_resampled.meta[:name] = old_name # preserve name, not to be changed by resample()
+      self_resampled.meta[:units] = @meta[:units]
+      self_resampled.update_info
+      self_resampled
   end
 
   def -(other)
@@ -352,11 +362,13 @@ class Spectrum
         self_resampled.signal[i] -= input_resampled.signal[i]
       end
       self_resampled.meta[:name] = @meta[:name] # preserve name, not to be changed by resample()
+      self_resampled.meta[:units] = @meta[:units] # preserve name, not to be changed by resample()
       self_resampled.update_info
       self_resampled
     elsif other.is_a? Numeric
       result = Spectrum.new
       result.name = @meta[:name]
+      result.units = @meta[:units]
       result.wv = @wv
       result.signal = @signal.map {|x| x - other}
       result
