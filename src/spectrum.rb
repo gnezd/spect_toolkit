@@ -279,8 +279,7 @@ class Spectrum
       self_resmpled_v = GSL::Vector.alloc(resample(sample).map { |pt| pt[1] })
       input_resmpled_v = GSL::Vector.alloc(other.resample(sample).map { |pt| pt[1] })
       result = self_resmpled_v * input_resmpled_v.col
-      result.meta[:units] = @meta[:units]
-      result.meta[:units][1] = 'a.u.'
+
     # Scalar product
     elsif other.is_a? Numeric
       result.signal = @signal.map{|x| x * other}
