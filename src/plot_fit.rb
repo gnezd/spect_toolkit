@@ -133,7 +133,17 @@ end
 # Sparse methods below
 
 # Plot the spectra in an array
-# Options: debug(true/false), out_dir(str), plotline_inject(str), linestyle(array of str), plot_term(str), plot_width(int), plot_height(int), plot_style(str), raman_line(str)
+# Options:
+#   debug:           (bool)  Enable debug printing
+#   out_dir:         (str)   Output directory path
+#   plotline_inject: (array) Additional gnuplot plot strings to append
+#   linestyle:       (array) Custom styles per spectrum (e.g., ["lines lt 2"])
+#   plot_term:       (str)   Terminal type: 'svg', 'png', or 'tkcanvas-rb'
+#   plot_width:      (int)   Width of the output image
+#   plot_height:     (int)   Height of the output image
+#   plot_style:      (str)   Global gnuplot settings (e.g., "set grid")
+#   raman_line:      (str)   Excitation wavelength for Raman shift (e.g., "532 nm", "1.5 eV")
+#   output_filename: (str)   Basename for plot output file
 def plot_spectra(spectra, options = {})
   debug = options[:debug]
   raise 'Not an array of spectra input.' unless (spectra.is_a? Array) && (spectra.all? Spectrum)
@@ -146,6 +156,16 @@ def plot_spectra(spectra, options = {})
   outdir = options[:out_dir] || 'plot-' + Time.now.strftime('%d%b-%H%M%S')
   puts "Ploting to #{outdir}" if debug
   FileUtils.mkdir_p outdir unless Dir.exist? outdir
+
+  if options[:output_filename]
+    plot_output = "#{options[:output_filename]}"
+  else
+    plot_output = "#{outdir}/spect-plot"
+  end
+
+  # Default dimensions
+  options[:plot_height] = 600 unless options[:plot_height].is_a? Numeric
+  options[:plot_width] = 800 unless options[:plot_width].is_a? Numeric
 
   # Prepare plots
   plots = []
@@ -187,9 +207,9 @@ def plot_spectra(spectra, options = {})
         puts "Raman line: #{raman_line}"
         coord_ref = "(#{raman_line}-$1):($2)"
       end
-
     end
 
+    # Label the labels
     if linestyle == 'labels'
       coord_ref += ':($1)'
     end
@@ -206,33 +226,29 @@ def plot_spectra(spectra, options = {})
   plots += options[:plotline_inject] if options[:plotline_inject]
   plotline = 'plot ' + plots.join(", \\\n")
 
+
   # Terminal dependent preparations
-  options[:plot_width] = 800 unless options[:plot_width].is_a? Numeric
-  options[:plot_height] = 600 unless options[:plot_height].is_a? Numeric
   case options&.[](:plot_term)
   when nil, 'svg' # Means not indicated or svg
-    plot_output = "#{outdir}/spect-plot.svg"
     gplot_terminal = <<~GP_TERM
       set terminal svg size #{options[:plot_width]},#{options[:plot_height]} enhanced mouse standalone
-      set output '#{plot_output}'
+      set output '#{plot_output}.svg'
     GP_TERM
   when 'png'
-    plot_output = "#{outdir}/spect-plot.png"
     gplot_terminal = <<~GP_TERM
       set terminal png size 800,600
-      set output '#{plot_output}'
+      set output '#{plot_output}.png'
     GP_TERM
   when 'tkcanvas-rb'
-    plot_output = "#{outdir}/spect-plot.rb"
     gplot_terminal = <<~GP_TERM
       set terminal tkcanvas ruby size #{options[:plot_width]},#{options[:plot_height]}
-      set output '#{plot_output}'
+      set output '#{plot_output}.rb'
     GP_TERM
   end
 
   # Writing gnuplot instructions
   # Cleaan these up!
-  gplot = File.open outdir + '/gplot', 'w'
+  gplot = File.open(plot_output+'.gplot', 'w')
   plot_headder = <<~GPLOT_HEADER
     #{gplot_terminal}
     set xlabel '#{x_units[0]}'
@@ -245,7 +261,7 @@ def plot_spectra(spectra, options = {})
 
   # Execute and return plot path
   # Catch plotting failure? Err if plot_output not generated?
-  `gnuplot '#{outdir}/gplot'`
+  `gnuplot '#{plot_output}.gplot'`
   plot_output
 end
 
