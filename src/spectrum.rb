@@ -533,7 +533,7 @@ class Spectrum
   end
 
   # Substract dark count from baseline segment(s)
-  def dark_segments(segments)
+  def dark_segments!(segments)
     raise "Expecting segments to be array or array of arrays" unless segments.is_a? Array
     segments = [segments] if !segments[0].is_a? Array
     dark_segments = segments.map{|sg| self.from_to(*sg)}

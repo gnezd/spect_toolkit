@@ -202,6 +202,8 @@ def plot_spectra(spectra, options = {})
       case spectrum.meta[:units][0] # What am I doing?? (08 Aug 2024)
         # Oh no this needs cross conversion...
       when 'nm'
+        puts "Raman line: #{raman_line}"
+        coord_ref = "(1E7/#{raman_line}-1E7/$1):($2)"
       when 'eV'
       when 'wavenumber', 'cm-1'
         puts "Raman line: #{raman_line}"

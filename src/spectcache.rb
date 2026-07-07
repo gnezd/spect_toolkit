@@ -76,8 +76,7 @@ class SpectCache
 
   def to_spectrum
     read_cache
-
-    spect
+    @data
   end
 
 end
